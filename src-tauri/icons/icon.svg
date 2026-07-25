@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Puppis S1 Manager">
+  <rect width="512" height="512" rx="112" fill="#071412"/>
+  <path d="M126 174c48-78 212-78 260 0M160 226c45-49 147-49 192 0M207 279c26-23 72-23 98 0" fill="none" stroke="#64e1bb" stroke-width="34" stroke-linecap="round"/>
+  <circle cx="256" cy="348" r="36" fill="#64e1bb"/>
+</svg>

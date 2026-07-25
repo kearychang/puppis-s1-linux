@@ -1,0 +1,17 @@
+[package]
+name = "puppis-s1-manager"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lib]
+name = "puppis_s1_manager"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+puppis-core = { path = "../crates/puppis-core" }
+tauri = { version = "2", features = [] }

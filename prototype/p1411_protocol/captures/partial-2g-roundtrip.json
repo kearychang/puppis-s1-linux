@@ -1,0 +1,70 @@
+{
+  "captured_at": "2026-07-25",
+  "device": "P1411",
+  "firmware": "B-MD2FP1411V1.22-250108-r0e17",
+  "endpoint": "192.168.137.254:10081",
+  "command": "set2GHotspot",
+  "schema": ["ssid", "pwd", "pt", "ch", "code", "en", "encrypt", "bw"],
+  "preflight": {
+    "mode": "1",
+    "channel": "0",
+    "country": "CA",
+    "encryption": "0",
+    "enabled": "0",
+    "bandwidth": "40",
+    "ssid": "[REDACTED]",
+    "password": "[REDACTED]"
+  },
+  "ssid_roundtrip": {
+    "temporary_value": "[REDACTED]",
+    "temporary_complete_object_verified": true,
+    "original_complete_object_restored_and_verified": true
+  },
+  "channel_roundtrip": {
+    "temporary_value": "6",
+    "temporary_complete_object_verified": true,
+    "original_value": "0",
+    "original_complete_object_restored_and_verified": true
+  },
+  "password_roundtrip": {
+    "temporary_value": "[REDACTED]",
+    "temporary_complete_object_verified": true,
+    "restoration_attempted": true,
+    "restoration_complete_object_verified": false,
+    "failure": "complete getter object did not match the original snapshot within 30 seconds"
+  },
+  "state_when_test_stopped": {
+    "mode": "1",
+    "ssid_is_prototype_value": false,
+    "channel": "0",
+    "password_is_prototype_value": true,
+    "all_non_password_2g_fields_match_preflight": true,
+    "password_matches_5g": false
+  },
+  "secrets_logged_or_saved": false,
+  "further_mutations_stopped": true,
+  "result": "ssid_and_channel_met_the_transaction_standard_but_password_restoration_failed",
+  "authorized_recovery": {
+    "action": "replace the prototype 2.4 GHz password with the live 5 GHz password in memory",
+    "setter_response": {"fun": "set2GHotspot", "status": "ok"},
+    "complete_2g_object_verified": true,
+    "prototype_password_removed": true,
+    "all_non_password_fields_preserved": true,
+    "password_matches_5g": true
+  },
+  "final_redacted_state": {
+    "mode": "1",
+    "ssid_is_prototype_value": false,
+    "password_is_prototype_value": false,
+    "channel": "0",
+    "country": "CA",
+    "password_matches_5g": true,
+    "5g_settings_unchanged": true
+  },
+  "device_state": "reconciled",
+  "qualification": {
+    "ssid": "qualified by complete change and restoration",
+    "channel_6": "qualified by complete change and restoration",
+    "password": "not qualified because the original value did not restore"
+  }
+}

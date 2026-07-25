@@ -1,0 +1,3 @@
+# Persist only minimal non-secret application state
+
+NetworkManager remains authoritative for managed host profiles and the Puppis remains authoritative for device configuration; v1 adds no database or cached device model. A small versioned XDG state file may contain non-secret preferences and interrupted-operation markers, while credentials, raw frames, SSIDs, serials, MAC addresses, and device-configuration snapshots remain unpersisted. A user-inspectable and clearable structured log is capped at 5 MiB in the XDG state directory and obeys the same exclusions; diagnostics exist only after explicit export and reprocess logs through mandatory redaction.

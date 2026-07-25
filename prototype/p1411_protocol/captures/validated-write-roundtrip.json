@@ -1,0 +1,58 @@
+{
+  "captured_at": "2026-07-25",
+  "device": "P1411",
+  "firmware": "B-MD2FP1411V1.22-250108-r0e17",
+  "endpoint": "192.168.137.254:10081",
+  "command": "set5GHotspot",
+  "schema": ["ssid", "pwd", "pt", "ch", "code", "en", "encrypt", "bw"],
+  "before": {
+    "ssid": "[REDACTED]",
+    "pwd": "[REDACTED]",
+    "pt": "0",
+    "ch": "0",
+    "code": "CA",
+    "en": "0",
+    "encrypt": "5",
+    "bw": "160"
+  },
+  "temporary_write": {
+    "changed_field": "ssid",
+    "ssid": "prismpulse-codex-test",
+    "all_other_fields_preserved": true,
+    "response": {"fun": "set5GHotspot", "status": "ok"},
+    "getter_readback_verified": true
+  },
+  "channel_roundtrip": {
+    "original": "0",
+    "temporary": "36",
+    "all_other_fields_preserved": true,
+    "temporary_response": {"fun": "set5GHotspot", "status": "ok"},
+    "temporary_getter_readback_verified": true,
+    "restoration_response": {"fun": "set5GHotspot", "status": "ok"},
+    "restoration_getter_readback_verified": true
+  },
+  "password_roundtrip": {
+    "original": "[REDACTED]",
+    "temporary": "[REDACTED]",
+    "all_other_fields_preserved": true,
+    "temporary_response": {"fun": "set5GHotspot", "status": "ok"},
+    "temporary_getter_readback_verified_in_memory": true,
+    "restoration_response": {"fun": "set5GHotspot", "status": "ok"},
+    "restoration_getter_readback_verified_in_memory": true
+  },
+  "restoration": {
+    "ssid": "[REDACTED]",
+    "all_other_fields_preserved": true,
+    "response": {"fun": "set5GHotspot", "status": "ok"},
+    "getter_readback_verified": true
+  },
+  "secrets_logged": false,
+  "final_readback": {
+    "ssid": "[REDACTED]",
+    "pwd": "[REDACTED]",
+    "ch": "0",
+    "code": "CA",
+    "status": "ok"
+  },
+  "result": "ssid_channel_and_password_roundtrips_succeeded_and_original_values_restored"
+}

@@ -1,0 +1,37 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Puppis S1 Manager for Linux",
+  "version": "0.1.0",
+  "identifier": "io.github.kearychang.PuppisS1Manager",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src ipc: http://ipc.localhost"
+    },
+    "windows": [
+      {
+        "label": "main",
+        "title": "Puppis S1 Manager for Linux",
+        "width": 1120,
+        "height": 760,
+        "minWidth": 760,
+        "minHeight": 560,
+        "devtools": false
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["deb"],
+    "icon": [],
+    "category": "Utility",
+    "shortDescription": "Unofficial Linux manager for the PrismXR Puppis S1",
+    "longDescription": "Configure a supported Puppis S1 and prepare Ubuntu host networking for PC-VR use.",
+    "copyright": "Copyright © 2026 Keary Chang"
+  }
+}

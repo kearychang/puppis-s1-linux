@@ -1,0 +1,28 @@
+{
+  "captured_at": "2026-07-25",
+  "device": "P1411",
+  "firmware": "B-MD2FP1411V1.22-250108-r0e17",
+  "endpoint": "192.168.137.254:10081",
+  "command": "setMode",
+  "schema": {"mode": "1|2|3"},
+  "mode_mapping": {
+    "1": "PrismPulse",
+    "2": "Wi-Fi hotspot",
+    "3": "Wi-Fi adapter"
+  },
+  "temporary_write": {
+    "from": "1",
+    "to": "2",
+    "response": {"fun": "setMode", "status": "ok"},
+    "getDevice_readback_verified": true
+  },
+  "restoration": {
+    "from": "2",
+    "to": "1",
+    "response": {"fun": "setMode", "status": "ok"},
+    "getDevice_readback_verified": true
+  },
+  "mode_3_live_tested": false,
+  "mode_3_note": "Official Windows logic also changes the host Puppis-interface address to 192.168.137.253.",
+  "result": "mode_1_to_2_roundtrip_succeeded_and_mode_1_was_restored"
+}

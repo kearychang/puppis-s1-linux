@@ -1,0 +1,14 @@
+{
+  "captured_at": "2026-07-25",
+  "device": "P1411",
+  "endpoint": "192.168.137.254:10081",
+  "command": {"fun": "setFactory", "args": {}},
+  "frame_hex": "aa268bead23901007b2266756e223a22736574466163746f7279222c2261726773223a7b7d7d",
+  "frame_length": 38,
+  "crc32": "8bead239",
+  "decompiled_response_behavior": "The official client treats status=ok as success.",
+  "official_ui_behavior": "The command is sent only after the factory-reset confirmation dialog.",
+  "live_transmitted": false,
+  "reason_not_transmitted": "Factory reset erases the current router configuration and PrismXR does not document the post-reset default credentials.",
+  "result": "encoding_and_guarded_command_path_validated_without_resetting_the_device"
+}

@@ -1,0 +1,10 @@
+# Local vendor research artifacts; never redistribute or package.
+/YncTcpSorket.dll
+/PrismXR.exe
+*.raw.strace
+
+# Build output.
+/target/
+/node_modules/
+/dist/
+/src-tauri/gen/

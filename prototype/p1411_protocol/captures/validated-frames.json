@@ -1,0 +1,37 @@
+{
+  "prototype_warning": "Throwaway, read-only protocol evidence; not production configuration code.",
+  "capture_date": "2026-07-25",
+  "capture_method": "PrismXR Desktop 1.2.5 under Wine, strace network syscalls and application console output",
+  "endpoint": "192.168.137.254:10081",
+  "source_address": "192.168.137.1",
+  "frames": [
+    {
+      "direction": "request",
+      "function": "getFirstlogin",
+      "captured_hex": "aa2979edc09301007b2266756e223a2267657446697273746c6f67696e222c2261726773223a7b7d7d",
+      "length": 41,
+      "crc32": "79edc093",
+      "crc_validated": true
+    },
+    {
+      "direction": "request",
+      "function": "getDevice",
+      "captured_hex": "aa25bd52005d01007b2266756e223a22676574446576696365222c2261726773223a7b7d7d",
+      "length": 37,
+      "crc32": "bd52005d",
+      "crc_validated": true
+    },
+    {
+      "direction": "response",
+      "function": "getDevice",
+      "captured_length": 203,
+      "captured_crc32": "cdb90455",
+      "captured_crc_validated": true,
+      "captured_status": "ok",
+      "captured_model": "P1411",
+      "captured_firmware": "B-MD2FP1411V1.22-250108-r0e17",
+      "privacy_note": "The exact response contained the device serial. The fixture below replaces it and therefore has a different length and CRC.",
+      "redacted_fixture_hex": "aac887937b9402007b2266756e223a22676574446576696365222c2264617461223a7b226d6f6465223a2231222c22616c696173223a225031343131222c226d6f64656c223a225031343131222c22706e223a22507269736d585220507570706973205331222c22736e223a225b52454441435445445d222c226677223a22422d4d443246503134313156312e32322d3235303130382d7230653137222c2273747265616d223a2231222c227374696d65223a22373636227d2c22737461747573223a226f6b227d"
+    }
+  ]
+}
