@@ -1,4 +1,4 @@
-"""PROTOTYPE: pure P1411 frame encoder/decoder; not production code."""
+"""RESEARCH ONLY: pure P1411 frame encoder/decoder; not production code."""
 
 from __future__ import annotations
 

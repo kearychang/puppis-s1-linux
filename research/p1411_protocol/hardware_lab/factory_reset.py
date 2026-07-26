@@ -8,8 +8,8 @@ import json
 import socket
 import time
 
-from live_read import get, recv_frame, redact
-from protocol_logic import ENDPOINT, decode_frame, encode_frame
+from research.p1411_protocol.hardware_lab.live_read import get, recv_frame, redact
+from research.p1411_protocol.protocol_logic import ENDPOINT, decode_frame, encode_frame
 
 
 CONFIRMATION = "ERASE-PUPPIS-CONFIG"

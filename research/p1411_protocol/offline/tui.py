@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 import os
 
-from protocol_logic import decode_frame, encode_getter
+from research.p1411_protocol.protocol_logic import decode_frame, encode_getter
 
 
 FRAMES = {

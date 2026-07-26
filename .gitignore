@@ -1,10 +1,48 @@
-# Local vendor research artifacts; never redistribute or package.
+# Vendor and private research inputs; never commit, redistribute, or package.
 /YncTcpSorket.dll
 /PrismXR.exe
+/vendor/
+/private/
+**/private/
 *.raw.strace
+*.pcap
+*.pcapng
 
-# Build output.
+# Credentials and local configuration.
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Rust, Node, Tauri, and test output.
 /target/
 /node_modules/
 /dist/
 /src-tauri/gen/
+/coverage/
+*.log
+npm-debug.log*
+
+# Release artifacts belong on GitHub Releases, not in Git.
+*.deb
+*.rpm
+*.AppImage
+*.sha256
+
+# Python research-tool state.
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Editors and operating systems.
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~

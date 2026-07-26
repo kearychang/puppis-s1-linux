@@ -1,0 +1,24 @@
+name: Feature request
+description: Propose an enhancement or design change.
+title: "[Enhancement]: "
+labels: [needs-triage]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user problem should this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Describe the behavior, not only a proposed implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: safety
+    attributes:
+      label: Safety and privacy considerations
+      description: Note any hardware mutation, host-network change, credentials, or personal data involved.

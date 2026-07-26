@@ -1,0 +1,94 @@
+name: Draft Debian release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-draft:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            libayatana-appindicator3-dev \
+            libdbus-1-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            patchelf \
+            pkg-config
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Select stable Rust
+        run: rustup update stable && rustup default stable
+
+      - name: Install locked JavaScript dependencies
+        run: npm ci
+
+      - name: Run strict safe checks
+        run: |
+          cargo test --workspace --locked
+          npm test
+          cargo fmt --all -- --check
+          cargo clippy --workspace --all-targets --locked -- -D warnings
+          npm run check
+          npm run build
+          node scripts/check-version.mjs
+          bash scripts/check-hardware-lab-guards.sh
+          python3 scripts/check-doc-links.py
+          bash scripts/audit-public-tree.sh
+
+      - name: Build Debian package
+        run: npx tauri build --bundles deb
+
+      - name: Inspect and normalize artifacts
+        id: artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t packages < <(find target/release/bundle/deb -maxdepth 1 -type f -name '*.deb')
+          if [[ ${#packages[@]} -ne 1 ]]; then
+            printf 'expected exactly one Debian package, found %s\n' "${#packages[@]}" >&2
+            exit 1
+          fi
+          scripts/inspect-deb.sh "${packages[0]}"
+          version="$(node -p "require('./package.json').version")"
+          release_name="puppis-s1-manager_${version}_amd64.deb"
+          cp "${packages[0]}" "$release_name"
+          sha256sum "$release_name" > "$release_name.sha256"
+          printf 'package=%s\nchecksum=%s\n' "$release_name" "$release_name.sha256" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ubuntu-24.04-amd64-deb
+          path: |
+            ${{ steps.artifact.outputs.package }}
+            ${{ steps.artifact.outputs.checksum }}
+          if-no-files-found: error
+
+      - name: Create draft GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "${{ steps.artifact.outputs.package }}" \
+            "${{ steps.artifact.outputs.checksum }}" \
+            --draft \
+            --generate-notes \
+            --title "Puppis S1 Manager ${GITHUB_REF_NAME}"

@@ -29,7 +29,10 @@ fn saving_an_observed_client_reuses_its_label_and_latest_observation() {
         .save_client_label("02:00:00:00:02:01", "  Living Room Headset  ")
         .unwrap();
 
-    assert_eq!(snapshot.client_evidence[0].display_name, "Living Room Headset");
+    assert_eq!(
+        snapshot.client_evidence[0].display_name,
+        "Living Room Headset"
+    );
     assert!(snapshot.client_evidence[0].saved);
     assert_eq!(snapshot.saved_clients.len(), 1);
     assert_eq!(snapshot.saved_clients[0].label, "Living Room Headset");

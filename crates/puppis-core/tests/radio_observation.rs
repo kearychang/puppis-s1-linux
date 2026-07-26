@@ -17,7 +17,7 @@ fn app(firmware: &str) -> Application {
     })
     .with_radio(
         RadioBand::FiveGhz,
-        RadioConfiguration::fixture("prismpulse", "private-5g", "36", "CA", "160"),
+        RadioConfiguration::fixture("example5g", "private-5g", "36", "CA", "160"),
     )
     .with_radio(
         RadioBand::TwoPointFourGhz,
@@ -39,7 +39,7 @@ fn qualified_radios_publish_non_secret_state_and_independent_capabilities() {
         .iter()
         .find(|radio| radio.band == RadioBand::FiveGhz)
         .unwrap();
-    assert_eq!(five.ssid, "prismpulse");
+    assert_eq!(five.ssid, "example5g");
     assert_eq!(five.qualified_channels, vec!["0", "36"]);
     assert!(five.ssid_mutation && five.password_mutation);
     let two = snapshot
@@ -75,7 +75,7 @@ fn unknown_firmware_reads_settings_but_exposes_no_mutations() {
 #[test]
 fn partial_two_point_four_ghz_fixture_is_a_required_password_gate_regression() {
     let fixture: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../prototype/p1411_protocol/captures/partial-2g-roundtrip.json"
+        "../../../research/p1411_protocol/captures/partial-2g-roundtrip.json"
     ))
     .unwrap();
     assert_eq!(

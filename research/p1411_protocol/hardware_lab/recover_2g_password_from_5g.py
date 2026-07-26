@@ -6,15 +6,15 @@ from __future__ import annotations
 import argparse
 import json
 
-from live_read import get
-from safe_2g_roundtrip import (
+from research.p1411_protocol.hardware_lab.live_read import get
+from research.p1411_protocol.hardware_lab.safe_2g_roundtrip import (
     PASSWORD_VALUES,
     QUALIFIED_FIRMWARE,
     read_settings,
     send_settings,
     wait_for_settings,
 )
-from safe_ssid_roundtrip import safe_response
+from research.p1411_protocol.hardware_lab.safe_ssid_roundtrip import safe_response
 
 
 CONFIRMATION = "RECOVER-2G-FROM-5G"

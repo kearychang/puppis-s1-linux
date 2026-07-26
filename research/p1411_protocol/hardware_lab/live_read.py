@@ -7,7 +7,7 @@ import argparse
 import json
 import socket
 
-from protocol_logic import ENDPOINT, decode_frame, encode_getter
+from research.p1411_protocol.protocol_logic import ENDPOINT, decode_frame, encode_getter
 
 
 def recv_exact(sock: socket.socket, size: int) -> bytes:
@@ -48,7 +48,20 @@ def get(function: str, *, timeout: float = 3.0) -> dict:
 def redact(value):
     if isinstance(value, dict):
         return {
-            key: "[REDACTED]" if key.lower() in {"pwd", "password", "sn"} else redact(item)
+            key: "[REDACTED]"
+            if key.lower()
+            in {
+                "pwd",
+                "password",
+                "sn",
+                "serial",
+                "ssid",
+                "bssid",
+                "mac",
+                "hostname",
+                "host_name",
+            }
+            else redact(item)
             for key, item in value.items()
         }
     if isinstance(value, list):

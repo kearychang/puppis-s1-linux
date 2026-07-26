@@ -1,30 +1,58 @@
 # Puppis S1 Manager for Linux
 
-An unofficial Ubuntu desktop manager for the PrismXR Puppis S1 (P1411).
+An unofficial, community-built Linux desktop manager for the PrismXR Puppis S1 (P1411).
 
-Created collaboratively by Keary Chang + Codex AI (OpenAI).
+The application provides a read-first view of the adapter, prepares host networking through NetworkManager, exposes only hardware operations qualified for the detected firmware, and recognizes previously saved client labels without storing Wi-Fi credentials.
 
-The production application is a Rust core behind a narrow Tauri 2 shell with a client-only Svelte interface. It observes first, talks directly to NetworkManager over system D-Bus, and enables Puppis mutations only for exact qualified firmware and operations.
+> [!IMPORTANT]
+> This project is not affiliated with or endorsed by PrismXR. The v1 binary is supported only on Ubuntu 26.04 LTS `amd64`. Other modern Linux distributions may work from source but have not been validated.
 
-The files under `prototype/` are research evidence and are not the production architecture. Normal tests never mutate physical hardware.
+## Capabilities
 
-## Development
+- Discover and verify a connected P1411 before enabling device changes.
+- Explain USB-link, host-sharing, device-mode, radio, and client-evidence state independently.
+- Create and reconcile an application-owned NetworkManager sharing profile without running the GUI as root.
+- Read qualified radio settings and perform guarded, recoverable operations.
+- Preview privacy-redacted diagnostics before explicitly exporting them.
+- Persist only explicit client labels and non-secret application state.
 
-Requirements are a current Rust toolchain, Node.js/npm, NetworkManager development headers, and Ubuntu's WebKitGTK 4.1 development package.
+The application makes no outbound internet requests, installs no daemon or privileged helper, and never runs physical-hardware mutation in normal tests or CI.
+
+## Install
+
+Download the `.deb` and matching `.sha256` file from [GitHub Releases](https://github.com/kearychang/puppis-s1-linux/releases). Verify and install it as described in [Installation](docs/user/installation.md).
+
+The first public release supports Ubuntu 26.04 LTS on `amd64`. See [Linux distribution compatibility](docs/research/linux-distribution-compatibility.md) for the distinction between supported and likely compatible systems.
+
+## Use
+
+Connect the Puppis S1 over USB, open **Puppis S1 Manager**, and follow the read-first checklist. The app explains proposed NetworkManager changes before the desktop requests authorization.
+
+See the [user guide](docs/user/README.md) for network requirements, status interpretation, privacy behavior, and troubleshooting.
+
+Keyboard shortcuts are `Alt+1` Overview, `Alt+2` Network, `Alt+3` Wi-Fi, `Alt+4` Diagnostics, and `Alt+A` About. Text scaling is available at 100%, 125%, and 150%.
+
+## Develop
+
+The production application is a Rust core behind a narrow Tauri 2 shell with a client-only Svelte interface.
 
 ```bash
+npm ci
 cargo test --workspace
 npm test
 npm run check
 npm run build
 ```
 
-Run the desktop shell with the Tauri CLI after installing its development tooling. The application itself remains unprivileged; NetworkManager and the desktop's existing polkit policy authorize system-wide sharing changes.
+Start with [Building and testing](docs/development/building.md) and [Architecture](docs/development/architecture.md). Independently written protocol research is retained under [`research/`](research/README.md); live hardware-lab tools are explicitly separated from production code and safe automation.
 
-## Release and Debian package
+## Releases and support
 
-`npm run release:check` runs the only two release-blocking suites first: `cargo test --workspace` and the safe Svelte suite. It then reports formatting, linting, type checking, version/lockfile consistency, and the production frontend build as advisory evidence. Normal automation never runs a physical hardware mutation.
+Safe CI checks source changes without hardware. Tagged releases build on Ubuntu 24.04 to keep the native ABI floor lower, then require manual Ubuntu 26.04 hardware validation and human approval before publication. Compiled artifacts are attached to GitHub Releases and are never committed.
 
-On Ubuntu 26.04 `amd64`, `npm run package:deb` runs that gate and builds only the Debian target. Inspect the resulting artifact with `scripts/inspect-deb.sh path/to/package.deb`, then record advisory environment and hardware results in [the manual release matrix](docs/release/manual-matrix.md). The package has no maintainer scripts: install, upgrade, and removal cannot modify live networking or connected clients, and it installs no daemon, service, autostart entry, root helper, custom policy, network profile, or firewall configuration.
-
-Fixed keyboard shortcuts are `Alt+1` for Overview, `Alt+2` for Network, `Alt+3` for Wi-Fi, `Alt+4` for Diagnostics, and `Alt+A` for About. The header text-size control offers 100%, 125%, and 150% scaling.
+- [Documentation index](docs/README.md)
+- [Release process](docs/release/README.md)
+- [Security policy](SECURITY.md)
+- [Contributing](CONTRIBUTING.md)
+- [License](LICENSE)
+- [Attribution and trademark notice](NOTICE.md)

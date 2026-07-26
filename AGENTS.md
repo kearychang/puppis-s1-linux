@@ -2,11 +2,11 @@
 
 ### Issue tracker
 
-Specs and issues use local Markdown under `.scratch/<feature-slug>/`. See `docs/agents/issue-tracker.md`.
+New bugs, enhancements, and plans use GitHub Issues. The original implementation specification and resolved tickets are read-only project history under `docs/project-history/`. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
-The tracker uses the canonical Matt Pocock skill labels. See `docs/agents/triage-labels.md`.
+GitHub Issues use the canonical Matt Pocock skill labels. See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 

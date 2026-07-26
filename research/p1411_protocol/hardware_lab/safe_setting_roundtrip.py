@@ -7,14 +7,19 @@ import argparse
 import json
 import time
 
-from live_read import get
-from safe_ssid_roundtrip import POLL_SECONDS, safe_response, send_set5g
+from research.p1411_protocol.hardware_lab.live_read import get
+from research.p1411_protocol.hardware_lab.safe_ssid_roundtrip import (
+    POLL_SECONDS,
+    safe_response,
+    send_set5g,
+)
 
 
 TEMPORARY_VALUES = {
     "ch": "36",
     "pwd": "CodexTest123!",
 }
+CONFIRMATION = "TEST-5G-SETTING-AND-RESTORE"
 
 
 def wait_for_field(field: str, expected: str) -> None:
@@ -39,7 +44,13 @@ def display_value(field: str, value: str) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("field", choices=sorted(TEMPORARY_VALUES))
+    parser.add_argument("--execute", action="store_true")
+    parser.add_argument("--confirm")
     args = parser.parse_args()
+    if not args.execute or args.confirm != CONFIRMATION:
+        parser.error(
+            f"live proof requires --execute --confirm {CONFIRMATION}; no write was sent"
+        )
 
     original_message = get("get5GHotspot")
     if original_message.get("status") != "ok":

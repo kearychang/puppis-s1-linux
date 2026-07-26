@@ -8,17 +8,19 @@ finally block, and verifies restoration. Passwords are never printed.
 
 from __future__ import annotations
 
+import argparse
 import json
 import socket
 import time
 
-from live_read import get, recv_frame
-from protocol_logic import ENDPOINT, encode_frame
+from research.p1411_protocol.hardware_lab.live_read import get, recv_frame
+from research.p1411_protocol.protocol_logic import ENDPOINT, encode_frame
 
 
 COMMAND = "set5GHotspot"
 TEMPORARY_SSID = "prismpulse-codex-test"
 POLL_SECONDS = 30
+CONFIRMATION = "TEST-5G-SSID-AND-RESTORE"
 
 
 def send_set5g(args: dict, *, timeout: float = 4.0) -> dict | None:
@@ -35,7 +37,7 @@ def send_set5g(args: dict, *, timeout: float = 4.0) -> dict | None:
 
 
 def decode_response(frame: bytes) -> dict:
-    from protocol_logic import decode_frame
+    from research.p1411_protocol.protocol_logic import decode_frame
 
     message = decode_frame(frame)["message"]
     if message.get("fun") != COMMAND:
@@ -69,6 +71,15 @@ def safe_response(response: dict | None) -> dict:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--execute", action="store_true")
+    parser.add_argument("--confirm")
+    args = parser.parse_args()
+    if not args.execute or args.confirm != CONFIRMATION:
+        parser.error(
+            f"live proof requires --execute --confirm {CONFIRMATION}; no write was sent"
+        )
+
     original_message = get("get5GHotspot")
     if original_message.get("status") != "ok":
         raise RuntimeError("get5GHotspot did not return status=ok; refusing write")
@@ -85,7 +96,7 @@ def main() -> None:
     result = {
         "command": COMMAND,
         "changed_field": "ssid",
-        "original_ssid": original_ssid,
+        "original_ssid": "[REDACTED]",
         "temporary_ssid": temporary["ssid"],
         "preserved_fields": sorted(key for key in original if key not in {"ssid", "pwd"}),
         "password_preserved_in_memory": "pwd" in original,

@@ -3,16 +3,18 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import socket
 import time
 
-from live_read import get, recv_frame
-from protocol_logic import ENDPOINT, decode_frame, encode_frame
+from research.p1411_protocol.hardware_lab.live_read import get, recv_frame
+from research.p1411_protocol.protocol_logic import ENDPOINT, decode_frame, encode_frame
 
 
 MODE_NAMES = {"1": "PrismPulse", "2": "Wi-Fi hotspot", "3": "Wi-Fi adapter"}
 POLL_SECONDS = 45
+CONFIRMATION = "TEST-MODE-AND-RESTORE"
 
 
 def send_mode(mode: str, *, timeout: float = 5.0) -> dict | None:
@@ -62,6 +64,15 @@ def safe_response(response: dict | None) -> dict:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--execute", action="store_true")
+    parser.add_argument("--confirm")
+    args = parser.parse_args()
+    if not args.execute or args.confirm != CONFIRMATION:
+        parser.error(
+            f"live proof requires --execute --confirm {CONFIRMATION}; no write was sent"
+        )
+
     original = current_mode()
     if original == "3":
         raise RuntimeError(

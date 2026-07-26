@@ -1,0 +1,71 @@
+name: Safe CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  safe-checks:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            libayatana-appindicator3-dev \
+            libdbus-1-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            patchelf \
+            pkg-config
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Select stable Rust
+        run: rustup update stable && rustup default stable
+
+      - name: Install locked JavaScript dependencies
+        run: npm ci
+
+      - name: Test Rust workspace
+        run: cargo test --workspace --locked
+
+      - name: Test Svelte interface
+        run: npm test
+
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lint Rust workspace
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Check Svelte and TypeScript
+        run: npm run check
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Compile-check research tools without running them
+        run: python3 -m compileall -q research
+
+      - name: Verify hardware-lab confirmation guards
+        run: bash scripts/check-hardware-lab-guards.sh
+
+      - name: Check documentation links
+        run: python3 scripts/check-doc-links.py
+
+      - name: Audit public tree
+        run: bash scripts/audit-public-tree.sh
+
+      - name: Confirm clean tracked checkout
+        run: test -z "$(git status --porcelain --untracked-files=no)"

@@ -16,9 +16,12 @@ import re
 import socket
 import time
 
-from live_read import get, recv_frame
-from protocol_logic import ENDPOINT, decode_frame, encode_frame
-from safe_ssid_roundtrip import POLL_SECONDS, safe_response
+from research.p1411_protocol.hardware_lab.live_read import get, recv_frame
+from research.p1411_protocol.hardware_lab.safe_ssid_roundtrip import (
+    POLL_SECONDS,
+    safe_response,
+)
+from research.p1411_protocol.protocol_logic import ENDPOINT, decode_frame, encode_frame
 
 
 GETTER = "get2GHotspot"

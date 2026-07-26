@@ -1,27 +1,14 @@
-# Issue tracker: Local Markdown
+# Issue tracker: GitHub Issues
 
-Issues and specs (also known as PRDs) for this project live as Markdown files in `.scratch/`.
+New bugs, enhancements, research proposals, and implementation plans use [GitHub Issues](https://github.com/kearychang/puppis-s1-linux/issues).
 
 ## Conventions
 
-- One feature per directory: `.scratch/<feature-slug>/`.
-- The spec is `.scratch/<feature-slug>/spec.md`.
-- Implementation issues are one file per ticket at `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01`; never use one combined tickets file.
-- Triage state is a `Status:` line near the top of each issue file. See `triage-labels.md` for the role strings.
-- Blocking edges use a `Blocked by: NN, NN` line near the top. A ticket is unblocked when all listed tickets are complete.
-- Comments and conversation history append under a `## Comments` heading.
+- Search existing issues before opening another.
+- Describe observable behavior, desired outcome, safety constraints, and acceptance criteria.
+- Use the labels defined in [triage-labels.md](triage-labels.md).
+- Express blocking relationships with GitHub's linked issues or a clear `Blocked by` list.
+- Never post credentials, SSIDs, MAC addresses, serial numbers, diagnostics, packet captures, or other private device/network data.
+- Use [private vulnerability reporting](../../SECURITY.md) for security-sensitive material.
 
-## Publishing
-
-When a skill says to publish to the issue tracker, create the appropriate file under `.scratch/<feature-slug>/`, creating the directory when needed.
-
-When a skill says to fetch a ticket, read the referenced file. The user will normally provide its path or number.
-
-## Wayfinding operations
-
-- Map: `.scratch/<effort>/map.md`.
-- Child ticket: `.scratch/<effort>/issues/<NN>-<slug>.md`.
-- Child metadata uses `Type:`, `Status:`, and `Blocked by:` lines.
-- The frontier is the lowest-numbered open, unblocked, and unclaimed ticket.
-- Claim by setting `Status: claimed` before work.
-- Resolve by appending the result under `## Answer`, setting `Status: resolved`, and adding a context pointer to the map.
+The original v1 Markdown tracker is preserved under [`docs/project-history/v1`](../project-history/v1/) as read-only history. Do not create a new `.scratch` tracker in the public repository.

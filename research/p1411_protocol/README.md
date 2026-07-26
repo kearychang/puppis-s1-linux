@@ -1,6 +1,6 @@
-# P1411 TCP protocol prototype
+# P1411 TCP protocol research
 
-**Throwaway prototype — not production code.** The terminal inspector is offline. The separate live scripts are narrowly constrained to read-only getters and one transactional, automatically restored SSID proof.
+**Research evidence—not production code or a supported user interface.** The offline inspector cannot access hardware. All scripts that connect to a device are quarantined in [`hardware_lab/`](hardware_lab/README.md), excluded from application packages and hosted CI, and every mutation requires an exact confirmation phrase.
 
 ## Question
 
@@ -9,7 +9,7 @@ What is the read-only P1411 desktop protocol used by PrismXR: endpoint, connecti
 ## Run
 
 ```bash
-python3 prototype/p1411_protocol/tui.py
+python3 -m research.p1411_protocol.offline.tui
 ```
 
 The terminal inspector decodes the two exact captured request frames and a privacy-redacted response fixture. It can also encode a getter locally or validate pasted frame hex. It performs no network I/O.
@@ -17,7 +17,7 @@ The terminal inspector decodes the two exact captured request frames and a priva
 The read-only live getter can be run with:
 
 ```bash
-python3 prototype/p1411_protocol/live_read.py getDevice get5GHotspot
+python3 -m research.p1411_protocol.hardware_lab.live_read getDevice get5GHotspot
 ```
 
 It rejects non-getter command names and redacts passwords and serials.
@@ -25,7 +25,8 @@ It rejects non-getter command names and redacts passwords and serials.
 The confirmation-gated 2.4 GHz SSID/channel/password proof can be run with one command:
 
 ```bash
-python3 prototype/p1411_protocol/safe_2g_roundtrip.py --execute --confirm TEST-2G-AND-RESTORE
+python3 -m research.p1411_protocol.hardware_lab.safe_2g_roundtrip \
+  --execute --confirm TEST-2G-AND-RESTORE
 ```
 
 It is a throwaway live prototype for qualified P1411 firmware 1.22. It changes one
@@ -37,7 +38,8 @@ authorized recovery command replaces it with the current 5 GHz password entirely
 in memory:
 
 ```bash
-python3 prototype/p1411_protocol/recover_2g_password_from_5g.py --execute --confirm RECOVER-2G-FROM-5G
+python3 -m research.p1411_protocol.hardware_lab.recover_2g_password_from_5g \
+  --execute --confirm RECOVER-2G-FROM-5G
 ```
 
 ## Verdict
@@ -89,11 +91,11 @@ All three captured frames passed total-length and CRC validation against the rec
 
 - [`captures/validated-write-roundtrip.json`](captures/validated-write-roundtrip.json) records the redacted successful setter response, getter read-back, restoration response, and final verification.
 - [`captures/partial-2g-roundtrip.json`](captures/partial-2g-roundtrip.json) records the redacted 2.4 GHz SSID/channel success, password-restoration failure, authorized recovery, and final reconciled state.
-- [`live_read.py`](live_read.py) is a live read-only getter client with secret redaction.
-- [`safe_ssid_roundtrip.py`](safe_ssid_roundtrip.py) is the narrowly allowlisted write proof. It preserves the current password only in memory and restores the original full settings object in a `finally` block.
-- [`safe_setting_roundtrip.py`](safe_setting_roundtrip.py) applies the same guarded proof to channel or password, with password values always redacted.
-- [`safe_mode_roundtrip.py`](safe_mode_roundtrip.py) tests only modes 1 and 2 and restores the original mode. Mode 3 is excluded because the official Windows workflow also readdresses the host interface.
-- [`factory_reset.py`](factory_reset.py) defaults to an offline dry run. Transmission requires both `--execute` and the exact confirmation token `ERASE-PUPPIS-CONFIG`.
+- [`hardware_lab/live_read.py`](hardware_lab/live_read.py) is a live read-only getter client with identifying-field redaction.
+- [`hardware_lab/safe_ssid_roundtrip.py`](hardware_lab/safe_ssid_roundtrip.py) is the narrowly allowlisted write proof. It preserves the current password only in memory and restores the original full settings object in a `finally` block.
+- [`hardware_lab/safe_setting_roundtrip.py`](hardware_lab/safe_setting_roundtrip.py) applies the same guarded proof to channel or password, with password values always redacted.
+- [`hardware_lab/safe_mode_roundtrip.py`](hardware_lab/safe_mode_roundtrip.py) tests only modes 1 and 2 and restores the original mode. Mode 3 is excluded because the official Windows workflow also readdresses the host interface.
+- [`hardware_lab/factory_reset.py`](hardware_lab/factory_reset.py) defaults to an offline dry run. Transmission requires both `--execute` and the exact confirmation token `ERASE-PUPPIS-CONFIG`.
 - [`captures/validated-mode-roundtrip.json`](captures/validated-mode-roundtrip.json) records the successful reversible mode test.
 - [`captures/factory-reset-dry-run.json`](captures/factory-reset-dry-run.json) records the recovered reset frame and why it has not yet been transmitted.
 - Raw write frames and CRCs are omitted because they include the existing Wi-Fi password.
