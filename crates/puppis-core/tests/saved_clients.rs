@@ -110,13 +110,33 @@ fn labels_are_printable_unique_and_limited_to_ten_saved_clients() {
             .code,
         "invalid_client_label"
     );
-    app.save_client_label("02:00:00:00:00:00", "Headset")
+    assert_eq!(
+        app.save_client_label("02:00:00:00:00:00", "hidden\u{202e}text")
+            .unwrap_err()
+            .code,
+        "invalid_client_label"
+    );
+    app.save_client_label("02:00:00:00:00:00", "Straße")
         .unwrap();
     assert_eq!(
-        app.save_client_label("02:00:00:00:00:01", "headset")
+        app.save_client_label("02:00:00:00:00:01", "STRASSE")
             .unwrap_err()
             .code,
         "client_label_not_unique"
+    );
+    app.save_client_label("02:00:00:00:00:01", "Client 1")
+        .unwrap();
+    assert_eq!(
+        app.rename_saved_client("02:00:00:00:00:01", "STRASSE")
+            .unwrap_err()
+            .code,
+        "client_label_not_unique"
+    );
+    assert_eq!(
+        app.rename_saved_client("02:00:00:00:00:01", "hidden\u{200b}text")
+            .unwrap_err()
+            .code,
+        "invalid_client_label"
     );
     for index in 1..10 {
         app.save_client_label(
@@ -130,6 +150,41 @@ fn labels_are_printable_unique_and_limited_to_ten_saved_clients() {
             .unwrap_err()
             .code,
         "saved_client_limit_reached"
+    );
+}
+
+#[test]
+fn a_runtime_storage_failure_disables_more_saved_client_mutations() {
+    let environment = InMemoryEnvironment::with_candidates(vec![PuppisCandidate {
+        id: "candidate-1".into(),
+        interface_name: "enx001".into(),
+        display_name: "USB network adapter (enx001)".into(),
+        link_speed: UsbLinkSpeed::SuperSpeed,
+    }])
+    .with_recent_client_observations(vec![ClientNetworkObservation::fixture(
+        "02:00:00:00:00:01",
+        "192.168.137.10",
+    )])
+    .with_saved_clients_path(std::path::PathBuf::from(
+        "/proc/puppis-s1-manager/saved-clients.json",
+    ));
+    let app = Application::new(environment);
+    app.refresh_candidates().unwrap();
+    app.select_candidate("candidate-1").unwrap();
+    app.refresh_client_evidence(true).unwrap();
+
+    assert_eq!(
+        app.save_client_label("02:00:00:00:00:01", "Headset")
+            .unwrap_err()
+            .code,
+        "saved_clients_storage_failed"
+    );
+    assert!(!app.snapshot().saved_clients_available);
+    assert_eq!(
+        app.save_client_label("02:00:00:00:00:01", "Headset")
+            .unwrap_err()
+            .code,
+        "saved_clients_storage_failed"
     );
 }
 

@@ -47,6 +47,7 @@ fn diagnostics_redact_saved_labels_and_hardware_addresses() {
     assert!(!preview.contains("02:00:00:00:02:01"));
     assert!(preview.contains("client-1"));
     assert!(preview.contains("192.168.137.20"));
+    assert!(preview.contains(r#""currentlyObserved": true"#));
 }
 
 #[test]

@@ -48,9 +48,11 @@
   let confirmResetSaved = false;
   let reassociation: { previousHardwareAddress: string; newHardwareAddress: string } | null = null;
   let unobservedSavedClients: ApplicationSnapshot["savedClients"] = [];
+  let freshnessLabel = "";
   $: unobservedSavedClients = snapshot.savedClients
     .filter((saved) => !snapshot.clientEvidence.some((observed) => observed.hardwareAddress === saved.hardwareAddress))
     .sort((left, right) => right.lastObservedAt - left.lastObservedAt);
+  $: freshnessLabel = freshnessText(refreshingStatus, snapshot.observedStatusAt, nowSeconds);
   $: for (const radio of snapshot.radios) {
     if (ssidDrafts[radio.band] === undefined) ssidDrafts[radio.band] = radio.ssid;
     if (channelDrafts[radio.band] === undefined) channelDrafts[radio.band] = radio.channel;
@@ -114,10 +116,10 @@
     finally { refreshingStatus = false; nowSeconds = Math.floor(Date.now() / 1000); }
   }
 
-  function freshnessText(): string {
-    if (refreshingStatus) return "Observed status · Refreshing";
-    if (snapshot.observedStatusAt === null) return "Observed status · Not updated yet";
-    const age = Math.max(0, nowSeconds - snapshot.observedStatusAt);
+  function freshnessText(refreshing: boolean, observedAt: number | null, currentTime: number): string {
+    if (refreshing) return "Observed status · Refreshing";
+    if (observedAt === null) return "Observed status · Not updated yet";
+    const age = Math.max(0, currentTime - observedAt);
     const relative = age < 60 ? `${age}s ago` : `${Math.floor(age / 60)}m ago`;
     return `Observed status · ${age > 45 ? "Delayed · " : ""}Updated ${relative}`;
   }
@@ -230,7 +232,7 @@
       <h1>Puppis S1 Manager</h1>
     </div>
     <div class="header-tools">
-      <span class="revision" aria-live="polite">{freshnessText()}</span>
+      <span class="revision" aria-live="polite">{freshnessLabel}</span>
       <label class="text-scale">Text size
         <select aria-label="Text size" bind:value={textScale}>
           <option value={100}>100%</option>
@@ -329,7 +331,7 @@
         {:else}<p>No clients are currently observed.</p>{/if}
       </section>
 
-      {#if unobservedSavedClients.length > 0 || !snapshot.savedClientsAvailable}
+      {#if snapshot.savedClients.length > 0 || !snapshot.savedClientsAvailable}
         <section class="client-panel" aria-labelledby="saved-clients-heading">
           <div class="client-panel-heading"><div><p class="eyebrow">Recognition only</p><h3 id="saved-clients-heading">Saved clients</h3></div>{#if snapshot.savedClients.length > 0}<button class="danger" type="button" on:click={() => confirmClearSaved = true}>Clear all saved clients</button>{/if}</div>
           {#if !snapshot.savedClientsAvailable}

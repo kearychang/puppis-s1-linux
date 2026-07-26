@@ -93,6 +93,7 @@ test("a saved observed client can be renamed or forgotten", async () => {
     { label: "Living Room Headset", hardwareAddress: "02:00:00:00:02:01", lastObservedAt: 1_721_920_000, addresses: ["192.168.137.20"] },
   ] }, onRenameSavedClient, onForgetSavedClient });
 
+  expect(screen.getByRole("button", { name: "Clear all saved clients" })).toBeInTheDocument();
   const rename = screen.getByLabelText("Rename Living Room Headset");
   await userEvent.clear(rename);
   await userEvent.type(rename, "Headset");
@@ -112,13 +113,15 @@ test("empty client evidence explains passive discovery and still lists saved cli
   expect(screen.getByText("Living Room Headset")).toBeInTheDocument();
 });
 
-test("the header reports observation freshness without exposing internal revisions", () => {
+test("the header reports observation freshness and marks updates delayed after 45 seconds", async () => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date(1_721_920_030_000));
   render(App, { snapshot: { ...noDeviceSnapshot, observedStatusAt: 1_721_920_000 } });
 
   expect(screen.getByText("Observed status · Updated 30s ago")).toBeInTheDocument();
   expect(screen.queryByText(/Live state/)).not.toBeInTheDocument();
+  await vi.advanceTimersByTimeAsync(16_000);
+  expect(screen.getByText("Observed status · Delayed · Updated 46s ago")).toBeInTheDocument();
   vi.useRealTimers();
 });
 

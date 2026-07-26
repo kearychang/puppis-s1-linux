@@ -7,6 +7,8 @@ use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
+use unicode_casefold::UnicodeCaseFold;
+use unicode_general_category::{GeneralCategory, get_general_category};
 
 pub mod client_state;
 pub mod diagnostics;
@@ -969,6 +971,7 @@ pub struct Application {
     snapshot: Arc<RwLock<ApplicationSnapshot>>,
     environment: InMemoryEnvironment,
     mutation_lease: Arc<Mutex<()>>,
+    saved_client_lease: Arc<Mutex<()>>,
     log: Option<log::BoundedLog>,
 }
 
@@ -1030,6 +1033,7 @@ impl Application {
             snapshot: Arc::new(RwLock::new(initial)),
             environment,
             mutation_lease: Arc::new(Mutex::new(())),
+            saved_client_lease: Arc::new(Mutex::new(())),
             log,
         }
     }
@@ -1722,6 +1726,10 @@ impl Application {
         if !telemetry_visible {
             return Ok(self.snapshot());
         }
+        let _saved_client_lease = self
+            .saved_client_lease
+            .lock()
+            .expect("saved client lease poisoned");
         let interface_name = self.selected_interface()?;
         let (connected, recent) = self.environment.read_client_evidence(&interface_name)?;
         let puppis_hardware_addresses: HashSet<_> = connected
@@ -1874,8 +1882,12 @@ impl Application {
         hardware_address: &str,
         label: &str,
     ) -> Result<ApplicationSnapshot, OperationFailure> {
+        let _saved_client_lease = self
+            .saved_client_lease
+            .lock()
+            .expect("saved client lease poisoned");
         let label = label.trim();
-        if label.is_empty() || label.chars().count() > 40 || label.chars().any(char::is_control) {
+        if !is_valid_client_label(label) {
             return Err(OperationFailure::safe(
                 "invalid_client_label",
                 "Client labels must contain 1 to 40 printable characters.",
@@ -1898,15 +1910,15 @@ impl Application {
                     "Wait for local traffic from the client, refresh, and try again.",
                 )
             })?;
-        let mut saved_clients_guard = self
+        let mut saved_clients = self
             .environment
             .saved_clients
-            .write()
-            .expect("saved client state poisoned");
-        let mut saved_clients = saved_clients_guard.clone();
+            .read()
+            .expect("saved client state poisoned")
+            .clone();
         if saved_clients.iter().any(|client| {
             client.hardware_address != hardware_address
-                && client.label.to_lowercase() == label.to_lowercase()
+                && client_label_key(&client.label) == client_label_key(label)
         }) {
             return Err(OperationFailure::safe(
                 "client_label_not_unique",
@@ -1939,10 +1951,13 @@ impl Application {
         } else {
             saved_clients.push(saved);
         }
-        saved_clients.sort_by_key(|client| client.label.to_lowercase());
-        self.environment.persist_saved_clients(&saved_clients)?;
-        saved_clients_guard.clone_from(&saved_clients);
-        drop(saved_clients_guard);
+        saved_clients.sort_by_key(|client| client_label_key(&client.label));
+        self.persist_saved_clients_or_disable(&saved_clients)?;
+        self.environment
+            .saved_clients
+            .write()
+            .expect("saved client state poisoned")
+            .clone_from(&saved_clients);
         let mut snapshot = self.snapshot.write().expect("application state poisoned");
         snapshot.revision += 1;
         snapshot.saved_clients = saved_clients;
@@ -1963,8 +1978,12 @@ impl Application {
         hardware_address: &str,
         label: &str,
     ) -> Result<ApplicationSnapshot, OperationFailure> {
+        let _saved_client_lease = self
+            .saved_client_lease
+            .lock()
+            .expect("saved client lease poisoned");
         let label = label.trim();
-        if label.is_empty() || label.chars().count() > 40 || label.chars().any(char::is_control) {
+        if !is_valid_client_label(label) {
             return Err(OperationFailure::safe(
                 "invalid_client_label",
                 "Client labels must contain 1 to 40 printable characters.",
@@ -1972,15 +1991,15 @@ impl Application {
             ));
         }
         let hardware_address = hardware_address.to_ascii_lowercase();
-        let mut guard = self
+        let mut saved_clients = self
             .environment
             .saved_clients
-            .write()
-            .expect("saved client state poisoned");
-        let mut saved_clients = guard.clone();
+            .read()
+            .expect("saved client state poisoned")
+            .clone();
         if saved_clients.iter().any(|client| {
             client.hardware_address != hardware_address
-                && client.label.to_lowercase() == label.to_lowercase()
+                && client_label_key(&client.label) == client_label_key(label)
         }) {
             return Err(OperationFailure::safe(
                 "client_label_not_unique",
@@ -1999,10 +2018,13 @@ impl Application {
             ));
         };
         saved.label = label.into();
-        saved_clients.sort_by_key(|client| client.label.to_lowercase());
-        self.environment.persist_saved_clients(&saved_clients)?;
-        guard.clone_from(&saved_clients);
-        drop(guard);
+        saved_clients.sort_by_key(|client| client_label_key(&client.label));
+        self.persist_saved_clients_or_disable(&saved_clients)?;
+        self.environment
+            .saved_clients
+            .write()
+            .expect("saved client state poisoned")
+            .clone_from(&saved_clients);
         let mut snapshot = self.snapshot.write().expect("application state poisoned");
         snapshot.revision += 1;
         snapshot.saved_clients = saved_clients;
@@ -2023,6 +2045,10 @@ impl Application {
         new_hardware_address: &str,
         confirmed: bool,
     ) -> Result<ApplicationSnapshot, OperationFailure> {
+        let _saved_client_lease = self
+            .saved_client_lease
+            .lock()
+            .expect("saved client lease poisoned");
         if !confirmed {
             return Err(OperationFailure::safe(
                 "confirmation_required",
@@ -2047,12 +2073,12 @@ impl Application {
                     "Wait for local traffic from that client, refresh, and try again.",
                 )
             })?;
-        let mut guard = self
+        let mut saved_clients = self
             .environment
             .saved_clients
-            .write()
-            .expect("saved client state poisoned");
-        let mut saved_clients = guard.clone();
+            .read()
+            .expect("saved client state poisoned")
+            .clone();
         if saved_clients
             .iter()
             .any(|client| client.hardware_address == new_hardware_address)
@@ -2077,9 +2103,12 @@ impl Application {
         saved.last_observed_at = self.environment.current_time();
         saved.addresses = observed.addresses;
         let label = saved.label.clone();
-        self.environment.persist_saved_clients(&saved_clients)?;
-        guard.clone_from(&saved_clients);
-        drop(guard);
+        self.persist_saved_clients_or_disable(&saved_clients)?;
+        self.environment
+            .saved_clients
+            .write()
+            .expect("saved client state poisoned")
+            .clone_from(&saved_clients);
         let mut snapshot = self.snapshot.write().expect("application state poisoned");
         snapshot.revision += 1;
         snapshot.saved_clients = saved_clients;
@@ -2100,17 +2129,24 @@ impl Application {
         &self,
         hardware_address: &str,
     ) -> Result<ApplicationSnapshot, OperationFailure> {
+        let _saved_client_lease = self
+            .saved_client_lease
+            .lock()
+            .expect("saved client lease poisoned");
         let hardware_address = hardware_address.to_ascii_lowercase();
-        let mut guard = self
+        let mut saved_clients = self
             .environment
             .saved_clients
-            .write()
-            .expect("saved client state poisoned");
-        let mut saved_clients = guard.clone();
+            .read()
+            .expect("saved client state poisoned")
+            .clone();
         saved_clients.retain(|client| client.hardware_address != hardware_address);
-        self.environment.persist_saved_clients(&saved_clients)?;
-        guard.clone_from(&saved_clients);
-        drop(guard);
+        self.persist_saved_clients_or_disable(&saved_clients)?;
+        self.environment
+            .saved_clients
+            .write()
+            .expect("saved client state poisoned")
+            .clone_from(&saved_clients);
         let mut snapshot = self.snapshot.write().expect("application state poisoned");
         snapshot.revision += 1;
         snapshot.saved_clients = saved_clients;
@@ -2130,6 +2166,10 @@ impl Application {
         &self,
         confirmed: bool,
     ) -> Result<ApplicationSnapshot, OperationFailure> {
+        let _saved_client_lease = self
+            .saved_client_lease
+            .lock()
+            .expect("saved client lease poisoned");
         if !confirmed {
             return Err(OperationFailure::safe(
                 "confirmation_required",
@@ -2137,7 +2177,7 @@ impl Application {
                 "This removes every saved label and recognition record.",
             ));
         }
-        self.environment.persist_saved_clients(&[])?;
+        self.persist_saved_clients_or_disable(&[])?;
         self.environment
             .saved_clients
             .write()
@@ -2158,6 +2198,10 @@ impl Application {
         &self,
         confirmed: bool,
     ) -> Result<ApplicationSnapshot, OperationFailure> {
+        let _saved_client_lease = self
+            .saved_client_lease
+            .lock()
+            .expect("saved client lease poisoned");
         if !confirmed {
             return Err(OperationFailure::safe(
                 "confirmation_required",
@@ -2198,6 +2242,25 @@ impl Application {
         }
         sort_client_evidence(&mut snapshot.client_evidence);
         Ok(snapshot.clone())
+    }
+
+    fn persist_saved_clients_or_disable(
+        &self,
+        clients: &[SavedClient],
+    ) -> Result<(), OperationFailure> {
+        if let Err(failure) = self.environment.persist_saved_clients(clients) {
+            *self
+                .environment
+                .saved_clients_failure
+                .write()
+                .expect("saved client failure state poisoned") = Some(failure.clone());
+            let mut snapshot = self.snapshot.write().expect("application state poisoned");
+            snapshot.revision += 1;
+            snapshot.saved_clients_available = false;
+            snapshot.saved_clients_failure = Some(failure.clone());
+            return Err(failure);
+        }
+        Ok(())
     }
 
     pub fn accept_current_configuration_as_baseline(
@@ -2492,11 +2555,41 @@ fn sort_client_evidence(clients: &mut [ClientEvidence]) {
         (false, true) => std::cmp::Ordering::Greater,
         (true, true) => left
             .display_name
-            .to_lowercase()
-            .cmp(&right.display_name.to_lowercase())
+            .case_fold()
+            .cmp(right.display_name.case_fold())
             .then_with(|| left.hardware_address.cmp(&right.hardware_address)),
         (false, false) => left.hardware_address.cmp(&right.hardware_address),
     });
+}
+
+pub(crate) fn is_valid_client_label(label: &str) -> bool {
+    !label.is_empty()
+        && label == label.trim()
+        && label.chars().count() <= 40
+        && label.chars().all(|character| {
+            !matches!(
+                get_general_category(character),
+                GeneralCategory::Control
+                    | GeneralCategory::Format
+                    | GeneralCategory::LineSeparator
+                    | GeneralCategory::ParagraphSeparator
+                    | GeneralCategory::Unassigned
+            )
+        })
+}
+
+pub(crate) fn client_label_key(label: &str) -> String {
+    label.case_fold().collect()
+}
+
+pub(crate) fn normalized_hardware_address(value: &str) -> Option<String> {
+    let normalized = value.to_ascii_lowercase();
+    let valid = normalized.len() == 17
+        && normalized.split(':').count() == 6
+        && normalized.split(':').all(|part| {
+            part.len() == 2 && part.chars().all(|character| character.is_ascii_hexdigit())
+        });
+    valid.then_some(normalized)
 }
 
 fn role_unavailable() -> OperationFailure {

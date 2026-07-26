@@ -1,5 +1,9 @@
-use crate::{OperationFailure, SavedClient};
+use crate::{
+    OperationFailure, SavedClient, client_label_key, is_valid_client_label,
+    normalized_hardware_address,
+};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
@@ -15,18 +19,23 @@ struct SavedClientFile {
 }
 
 pub fn load(path: &Path) -> Result<Vec<SavedClient>, OperationFailure> {
-    let contents = match fs::read_to_string(path) {
-        Ok(contents) => contents,
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
         Err(_) => return Err(storage_failure()),
     };
-    let state: SavedClientFile = serde_json::from_str(&contents).map_err(|_| {
-        OperationFailure::safe(
-            "saved_clients_corrupt",
-            "Saved client recognition data could not be read.",
-            "Reset saved clients to discard the unreadable file, or preserve it for inspection.",
-        )
-    })?;
+    if !metadata.file_type().is_file() {
+        return Err(corrupt_failure());
+    }
+    if metadata.permissions().mode() & 0o777 != 0o600 {
+        fs::set_permissions(path, fs::Permissions::from_mode(0o600))
+            .map_err(|_| storage_failure())?;
+    }
+    let contents = match fs::read_to_string(path) {
+        Ok(contents) => contents,
+        Err(_) => return Err(storage_failure()),
+    };
+    let state: SavedClientFile = serde_json::from_str(&contents).map_err(|_| corrupt_failure())?;
     if state.schema_version != SCHEMA_VERSION {
         return Err(OperationFailure::safe(
             "saved_clients_version_unsupported",
@@ -34,10 +43,11 @@ pub fn load(path: &Path) -> Result<Vec<SavedClient>, OperationFailure> {
             "Upgrade the manager or reset saved clients to start with an empty file.",
         ));
     }
-    Ok(state.clients)
+    validate_clients(state.clients)
 }
 
 pub fn save(path: &Path, clients: &[SavedClient]) -> Result<(), OperationFailure> {
+    validate_clients(clients.to_vec()).map_err(|_| storage_failure())?;
     let parent = path.parent().ok_or_else(storage_failure)?;
     let parent_existed = parent.exists();
     fs::create_dir_all(parent).map_err(|_| storage_failure())?;
@@ -96,4 +106,40 @@ fn storage_failure() -> OperationFailure {
         "Saved client recognition data could not be updated.",
         "Check the user state directory permissions and try again.",
     )
+}
+
+fn corrupt_failure() -> OperationFailure {
+    OperationFailure::safe(
+        "saved_clients_corrupt",
+        "Saved client recognition data could not be read.",
+        "Reset saved clients to discard the unreadable file, or preserve it for inspection.",
+    )
+}
+
+fn validate_clients(mut clients: Vec<SavedClient>) -> Result<Vec<SavedClient>, OperationFailure> {
+    if clients.len() > 10 {
+        return Err(corrupt_failure());
+    }
+    let mut labels = HashSet::new();
+    let mut hardware_addresses = HashSet::new();
+    for client in &mut clients {
+        if !is_valid_client_label(&client.label) || !labels.insert(client_label_key(&client.label))
+        {
+            return Err(corrupt_failure());
+        }
+        let Some(hardware_address) = normalized_hardware_address(&client.hardware_address) else {
+            return Err(corrupt_failure());
+        };
+        if !hardware_addresses.insert(hardware_address.clone()) {
+            return Err(corrupt_failure());
+        }
+        client.hardware_address = hardware_address;
+        let mut addresses = HashSet::new();
+        if client.addresses.iter().any(|address| {
+            address.parse::<std::net::Ipv4Addr>().is_err() || !addresses.insert(address.clone())
+        }) {
+            return Err(corrupt_failure());
+        }
+    }
+    Ok(clients)
 }

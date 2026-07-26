@@ -2264,6 +2264,8 @@ dependencies = [
  "dbus",
  "serde",
  "serde_json",
+ "unicode-casefold",
+ "unicode-general-category",
 ]
 
 [[package]]
@@ -3564,6 +3566,18 @@ checksum = "96bd2f2237fe450fcd0a1d2f5f4e91711124f7857ba2e964247776ebeeb7b0c4"
 dependencies = [
  "unic-common",
 ]
+
+[[package]]
+name = "unicode-casefold"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b7f66b1c8f8caa2ab31dc6d3f35386f16efdab89668f93411e565ac368908e8f"
+
+[[package]]
+name = "unicode-general-category"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b993bddc193ae5bd0d623b49ec06ac3e9312875fdae725a975c51db1cc1677f"
 
 [[package]]
 name = "unicode-ident"

@@ -76,10 +76,15 @@ pub fn preview(snapshot: &ApplicationSnapshot) -> Result<DiagnosticsBundle, Oper
         .iter()
         .enumerate()
         .map(|(index, client)| {
+            let currently_observed = snapshot
+                .client_evidence
+                .iter()
+                .any(|observed| observed.hardware_address == client.hardware_address);
             json!({
                 "alias": format!("saved-client-{}", index + 1),
                 "lastObservedAt": client.last_observed_at,
                 "addresses": client.addresses,
+                "currentlyObserved": currently_observed,
             })
         })
         .collect();
