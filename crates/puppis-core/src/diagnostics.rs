@@ -59,6 +59,30 @@ pub fn preview(snapshot: &ApplicationSnapshot) -> Result<DiagnosticsBundle, Oper
             })
         })
         .collect();
+    let client_evidence: Vec<_> = snapshot
+        .client_evidence
+        .iter()
+        .map(|client| {
+            json!({
+                "alias": client.alias,
+                "addresses": client.addresses,
+                "kind": client.kind,
+                "saved": client.saved,
+            })
+        })
+        .collect();
+    let saved_clients: Vec<_> = snapshot
+        .saved_clients
+        .iter()
+        .enumerate()
+        .map(|(index, client)| {
+            json!({
+                "alias": format!("saved-client-{}", index + 1),
+                "lastObservedAt": client.last_observed_at,
+                "addresses": client.addresses,
+            })
+        })
+        .collect();
     let value = json!({
         "schemaVersion": 1,
         "application": {
@@ -81,7 +105,10 @@ pub fn preview(snapshot: &ApplicationSnapshot) -> Result<DiagnosticsBundle, Oper
         "recoveryRequired": snapshot.recovery_required,
         "activeOperation": snapshot.active_operation,
         "lastFailure": snapshot.last_failure,
-        "clientEvidence": snapshot.client_evidence,
+        "clientEvidence": client_evidence,
+        "savedClients": saved_clients,
+        "savedClientsAvailable": snapshot.saved_clients_available,
+        "savedClientsFailure": snapshot.saved_clients_failure,
     });
     let preview = serde_json::to_string_pretty(&value).map_err(|_| {
         OperationFailure::safe(

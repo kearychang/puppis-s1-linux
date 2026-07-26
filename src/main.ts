@@ -7,6 +7,7 @@ import type { ApplicationSnapshot, DiagnosticsBundle, RadioUpdate } from "./lib/
 
 const initialSnapshot: ApplicationSnapshot = {
   revision: 1,
+  observedStatusAt: null,
   candidates: [],
   selectedCandidateId: null,
   verifiedPuppis: null,
@@ -16,6 +17,9 @@ const initialSnapshot: ApplicationSnapshot = {
   recoveryRequired: false,
   deviceRole: null,
   clientEvidence: [],
+  savedClients: [],
+  savedClientsAvailable: true,
+  savedClientsFailure: null,
   usb: { level: "unavailable", summary: "No Puppis candidate detected", guidance: null },
   sharing: { level: "unavailable", summary: "Host sharing not inspected", guidance: null },
   protocol: { level: "unavailable", summary: "No verified Puppis", guidance: null },
@@ -46,6 +50,12 @@ mount(App, {
     onSetDeviceRole: (role, confirmed) => invoke<ApplicationSnapshot>("set_device_role", { role, confirmed }),
     onRefreshClientEvidence: (telemetryVisible) => invoke<ApplicationSnapshot>("refresh_client_evidence", { telemetryVisible }),
     onRefreshStatus: () => invoke<ApplicationSnapshot>("refresh_operational_status"),
+    onSaveClientLabel: (hardwareAddress, label) => invoke<ApplicationSnapshot>("save_client_label", { hardwareAddress, label }),
+    onRenameSavedClient: (hardwareAddress, label) => invoke<ApplicationSnapshot>("rename_saved_client", { hardwareAddress, label }),
+    onForgetSavedClient: (hardwareAddress) => invoke<ApplicationSnapshot>("forget_saved_client", { hardwareAddress }),
+    onClearSavedClients: (confirmed) => invoke<ApplicationSnapshot>("clear_saved_clients", { confirmed }),
+    onResetSavedClients: (confirmed) => invoke<ApplicationSnapshot>("reset_saved_clients", { confirmed }),
+    onReassociateSavedClient: (previousHardwareAddress, newHardwareAddress, confirmed) => invoke<ApplicationSnapshot>("reassociate_saved_client", { previousHardwareAddress, newHardwareAddress, confirmed }),
     onAcceptRecoveryBaseline: () => invoke<ApplicationSnapshot>("accept_current_configuration_as_baseline"),
   },
 });

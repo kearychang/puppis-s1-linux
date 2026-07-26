@@ -1,10 +1,11 @@
-import { render, screen } from "@testing-library/svelte";
+import { fireEvent, render, screen } from "@testing-library/svelte";
 import userEvent from "@testing-library/user-event";
 import App from "./App.svelte";
 import type { ApplicationSnapshot } from "./lib/contracts";
 
 const noDeviceSnapshot: ApplicationSnapshot = {
   revision: 1,
+  observedStatusAt: null,
   candidates: [],
   selectedCandidateId: null,
   verifiedPuppis: null,
@@ -14,6 +15,9 @@ const noDeviceSnapshot: ApplicationSnapshot = {
   recoveryRequired: false,
   deviceRole: null,
   clientEvidence: [],
+  savedClients: [],
+  savedClientsAvailable: true,
+  savedClientsFailure: null,
   usb: { level: "unavailable", summary: "No Puppis candidate detected", guidance: null },
   sharing: { level: "unavailable", summary: "Host sharing not inspected", guidance: null },
   protocol: { level: "unavailable", summary: "No verified Puppis", guidance: null },
@@ -32,17 +36,105 @@ test("the overview explains every independent status when no device is present",
   expect(screen.getByText("No verified Puppis")).toBeInTheDocument();
   expect(screen.getByText("Device configuration unavailable")).toBeInTheDocument();
   expect(screen.getByText("Client evidence unavailable")).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "First-launch checklist" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Open Diagnostics" })).toBeInTheDocument();
+});
+
+test("fixed hotkeys navigate to diagnostics and the exact About attribution", async () => {
+  render(App, { snapshot: noDeviceSnapshot });
+  await userEvent.keyboard("{Alt>}4{/Alt}");
+  expect(screen.getByRole("heading", { name: "Diagnostics" })).toBeInTheDocument();
+  await userEvent.keyboard("{Alt>}a{/Alt}");
+  expect(screen.getByRole("heading", { name: "About" })).toBeInTheDocument();
+  expect(screen.getByText("Created collaboratively by Keary Chang + Codex AI (OpenAI).")).toBeInTheDocument();
+  expect(screen.getByText(/licensed under the MIT License/)).toBeInTheDocument();
+});
+
+test("a single candidate still requires explicit selection", async () => {
+  const onSelectCandidate = vi.fn();
+  render(App, { snapshot: { ...noDeviceSnapshot, candidates: [
+    { id: "usb-a", interfaceName: "enx001", displayName: "USB network adapter (enx001)", linkSpeed: "super_speed" },
+  ] }, onSelectCandidate });
+  expect(screen.queryByRole("button", { name: "Verify P1411 identity" })).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Inspect USB network adapter (enx001)" }));
+  expect(onSelectCandidate).toHaveBeenCalledWith("usb-a");
 });
 
 test("client evidence never calls a host neighbor currently connected", () => {
   render(App, { snapshot: { ...noDeviceSnapshot, clientEvidence: [
-    { alias: "client-1", kind: "connected" },
-    { alias: "client-2", kind: "recently_observed" },
+    { alias: "client-1", displayName: "Headset", hardwareAddress: "aa:bb:cc:11:22:33", addresses: ["192.168.137.20"], kind: "connected", saved: true },
+    { alias: "client-2", displayName: "Unlabeled client", hardwareAddress: "de:ad:be:ef:00:01", addresses: ["192.168.137.21"], kind: "recently_observed", saved: false },
   ] } });
 
   expect(screen.getByText("Connected client")).toBeInTheDocument();
   expect(screen.getByText("Recently observed client")).toBeInTheDocument();
   expect(screen.getByText("Host network evidence; current Wi-Fi connection is not confirmed.")).toBeInTheDocument();
+});
+
+test("an observed client shows its name MAC addresses and can be explicitly saved", async () => {
+  const onSaveClientLabel = vi.fn().mockResolvedValue(undefined);
+  render(App, { snapshot: { ...noDeviceSnapshot, clientEvidence: [
+    { alias: "client-1", displayName: "Unlabeled client", hardwareAddress: "02:00:00:00:02:01", addresses: ["192.168.137.20", "192.168.137.21"], kind: "recently_observed", saved: false },
+  ] }, onSaveClientLabel });
+
+  expect(screen.getByText("02:00:00:00:02:01")).toBeInTheDocument();
+  expect(screen.getByText("192.168.137.20 · 192.168.137.21")).toBeInTheDocument();
+  await userEvent.type(screen.getByLabelText("Label 02:00:00:00:02:01"), "Living Room Headset");
+  await userEvent.click(screen.getByRole("button", { name: "Save Living Room Headset" }));
+  expect(onSaveClientLabel).toHaveBeenCalledWith("02:00:00:00:02:01", "Living Room Headset");
+});
+
+test("a saved observed client can be renamed or forgotten", async () => {
+  const onRenameSavedClient = vi.fn().mockResolvedValue(undefined);
+  const onForgetSavedClient = vi.fn().mockResolvedValue(undefined);
+  render(App, { snapshot: { ...noDeviceSnapshot, clientEvidence: [
+    { alias: "client-1", displayName: "Living Room Headset", hardwareAddress: "02:00:00:00:02:01", addresses: ["192.168.137.20"], kind: "recently_observed", saved: true },
+  ], savedClients: [
+    { label: "Living Room Headset", hardwareAddress: "02:00:00:00:02:01", lastObservedAt: 1_721_920_000, addresses: ["192.168.137.20"] },
+  ] }, onRenameSavedClient, onForgetSavedClient });
+
+  const rename = screen.getByLabelText("Rename Living Room Headset");
+  await userEvent.clear(rename);
+  await userEvent.type(rename, "Headset");
+  await userEvent.click(screen.getByRole("button", { name: "Rename" }));
+  expect(onRenameSavedClient).toHaveBeenCalledWith("02:00:00:00:02:01", "Headset");
+  await userEvent.click(screen.getByRole("button", { name: "Forget Living Room Headset" }));
+  expect(onForgetSavedClient).toHaveBeenCalledWith("02:00:00:00:02:01");
+});
+
+test("empty client evidence explains passive discovery and still lists saved clients", () => {
+  render(App, { snapshot: { ...noDeviceSnapshot, savedClients: [
+    { label: "Living Room Headset", hardwareAddress: "02:00:00:00:02:01", lastObservedAt: 1_721_920_000, addresses: ["192.168.137.20"] },
+  ] } });
+
+  expect(screen.getByText(/appears after it sends local network traffic/i)).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Saved clients" })).toBeInTheDocument();
+  expect(screen.getByText("Living Room Headset")).toBeInTheDocument();
+});
+
+test("the header reports observation freshness without exposing internal revisions", () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date(1_721_920_030_000));
+  render(App, { snapshot: { ...noDeviceSnapshot, observedStatusAt: 1_721_920_000 } });
+
+  expect(screen.getByText("Observed status · Updated 30s ago")).toBeInTheDocument();
+  expect(screen.queryByText(/Live state/)).not.toBeInTheDocument();
+  vi.useRealTimers();
+});
+
+test("client evidence refreshes every 15 seconds only while Overview is visible", async () => {
+  vi.useFakeTimers();
+  const onRefreshClientEvidence = vi.fn().mockResolvedValue(noDeviceSnapshot);
+  render(App, { snapshot: { ...noDeviceSnapshot, selectedCandidateId: "usb-a" }, onRefreshClientEvidence });
+
+  await vi.advanceTimersByTimeAsync(14_999);
+  expect(onRefreshClientEvidence).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(1);
+  expect(onRefreshClientEvidence).toHaveBeenCalledWith(true);
+  await fireEvent.click(screen.getByRole("button", { name: "Network" }));
+  await vi.advanceTimersByTimeAsync(15_000);
+  expect(onRefreshClientEvidence).toHaveBeenCalledOnce();
+  vi.useRealTimers();
 });
 
 test("role transition confirmation names both roles and client disruption", async () => {

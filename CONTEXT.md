@@ -40,6 +40,34 @@ _Avoid_: Neighbor, detected client
 A possible client device represented by recent host-network evidence that does not prove a current wireless connection.
 _Avoid_: Connected client, active client
 
+**Observed client address**:
+An IPv4 address associated with a client by recent host-network evidence. It may be stale or reassigned and therefore neither identifies a client nor proves a current connection.
+_Avoid_: Client identity, connected address
+
+**Client hardware address**:
+A MAC address passively observed in host-network evidence and displayed for troubleshooting or matching a saved client. It may be randomized or change and therefore does not verify device identity.
+_Avoid_: Permanent address, device identity
+
+**Reported client name**:
+An optional, unverified hostname obtained without elevated access from current host-network evidence. It may be absent, change, or be supplied dishonestly by the client device.
+_Avoid_: Device name, verified name, client identity
+
+**Saved client label**:
+A friendly name explicitly assigned by the user and retained for later passive observations of the same MAC address. It expresses user recognition, not verified device identity, and never initiates traffic or controls network access.
+_Avoid_: Reported client name, verified name, automatic client label
+
+**Saved client**:
+A client hardware address, saved client label, last-observed timestamp, and address set from the latest observation intentionally retained by the user for future recognition. Its presence in saved configuration says nothing about whether that client is currently reachable or connected.
+_Avoid_: Offline client, known device, trusted client
+
+**Unlabeled client**:
+A recently observed client for which the user has not saved a client label. The term indicates missing user metadata, not suspicious behavior or unknown network access.
+_Avoid_: Client-N, unknown client, unidentified device
+
+**Observed status**:
+The current user-facing view of host, Puppis, and client evidence, including how recently it was refreshed. Internal snapshot revision numbers are diagnostic metadata, not a measure of health or freshness.
+_Avoid_: Live state, revision counter
+
 **Device mutation**:
 A requested change to configuration held by the Puppis, including radio settings, operating mode, or factory state.
 _Avoid_: Write, setter

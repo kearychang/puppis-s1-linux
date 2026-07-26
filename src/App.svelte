@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import packageMetadata from "../package.json";
   import type { ApplicationSnapshot, DeviceRole, DiagnosticsBundle, OperationFailure, RadioBand, RadioSnapshot, RadioUpdate, StatusDimension } from "./lib/contracts";
+  import { uiText } from "./lib/strings";
 
   export let snapshot: ApplicationSnapshot;
   export let onSelectCandidate: (candidateId: string) => void | ApplicationSnapshot | Promise<void | ApplicationSnapshot> = () => {};
@@ -16,10 +18,18 @@
   export let onSetDeviceRole: (role: DeviceRole, confirmed: boolean) => Promise<ApplicationSnapshot | void> = async () => {};
   export let onRefreshClientEvidence: (telemetryVisible: boolean) => Promise<ApplicationSnapshot> = async () => snapshot;
   export let onRefreshStatus: () => Promise<ApplicationSnapshot> = async () => snapshot;
+  export let onSaveClientLabel: (hardwareAddress: string, label: string) => Promise<ApplicationSnapshot | void> = async () => {};
+  export let onRenameSavedClient: (hardwareAddress: string, label: string) => Promise<ApplicationSnapshot | void> = async () => {};
+  export let onForgetSavedClient: (hardwareAddress: string) => Promise<ApplicationSnapshot | void> = async () => {};
+  export let onClearSavedClients: (confirmed: boolean) => Promise<ApplicationSnapshot | void> = async () => {};
+  export let onResetSavedClients: (confirmed: boolean) => Promise<ApplicationSnapshot | void> = async () => {};
+  export let onReassociateSavedClient: (previousHardwareAddress: string, newHardwareAddress: string, confirmed: boolean) => Promise<ApplicationSnapshot | void> = async () => {};
   export let onAcceptRecoveryBaseline: () => Promise<ApplicationSnapshot> = async () => snapshot;
   export let subscribeSnapshots: (handler: (next: ApplicationSnapshot) => void) => Promise<() => void> = async () => () => {};
   export let loadSnapshot: (() => Promise<ApplicationSnapshot>) | null = null;
-  let activeSection: "overview" | "network" | "wifi" | "diagnostics" = "overview";
+  type Section = "overview" | "network" | "wifi" | "diagnostics" | "about";
+  let activeSection: Section = "overview";
+  let textScale: 100 | 125 | 150 = 100;
   let diagnostics: DiagnosticsBundle | null = null;
   let exportPath = "puppis-s1-diagnostics.json";
   let ssidDrafts: Record<string, string> = {};
@@ -30,6 +40,17 @@
   let failure: OperationFailure | null = null;
   let operationPending = false;
   let pendingLabel = "";
+  let clientLabelDrafts: Record<string, string> = {};
+  let savedLabelDrafts: Record<string, string> = {};
+  let refreshingStatus = false;
+  let nowSeconds = Math.floor(Date.now() / 1000);
+  let confirmClearSaved = false;
+  let confirmResetSaved = false;
+  let reassociation: { previousHardwareAddress: string; newHardwareAddress: string } | null = null;
+  let unobservedSavedClients: ApplicationSnapshot["savedClients"] = [];
+  $: unobservedSavedClients = snapshot.savedClients
+    .filter((saved) => !snapshot.clientEvidence.some((observed) => observed.hardwareAddress === saved.hardwareAddress))
+    .sort((left, right) => right.lastObservedAt - left.lastObservedAt);
   $: for (const radio of snapshot.radios) {
     if (ssidDrafts[radio.band] === undefined) ssidDrafts[radio.band] = radio.ssid;
     if (channelDrafts[radio.band] === undefined) channelDrafts[radio.band] = radio.channel;
@@ -44,13 +65,14 @@
     if (loadSnapshot) loadSnapshot().then((next) => snapshot = next).catch(showFailure);
     const telemetryTimer = window.setInterval(() => {
       if (!operationPending && activeSection === "overview" && snapshot.selectedCandidateId) {
-        onRefreshClientEvidence(true).then((next) => snapshot = next).catch(() => {});
+        refreshClients().catch(() => {});
       }
-    }, 5000);
-    const statusTimer = window.setInterval(() => {
-      if (!operationPending) onRefreshStatus().then((next) => snapshot = next).catch(() => {});
     }, 15000);
-    return () => { disposed = true; unsubscribe?.(); window.clearInterval(telemetryTimer); window.clearInterval(statusTimer); };
+    const statusTimer = window.setInterval(() => {
+      if (!operationPending) refreshStatus().catch(() => {});
+    }, 15000);
+    const clockTimer = window.setInterval(() => nowSeconds = Math.floor(Date.now() / 1000), 1000);
+    return () => { disposed = true; unsubscribe?.(); window.clearInterval(telemetryTimer); window.clearInterval(statusTimer); window.clearInterval(clockTimer); };
   });
 
   async function selectCandidate(candidateId: string) {
@@ -77,6 +99,40 @@
   async function updateFrom(operation: () => Promise<ApplicationSnapshot>) {
     try { snapshot = await operation(); failure = null; }
     catch (error) { showFailure(error); }
+  }
+
+  async function refreshClients() {
+    refreshingStatus = true;
+    try { snapshot = await onRefreshClientEvidence(true); failure = null; }
+    catch (error) { showFailure(error); }
+    finally { refreshingStatus = false; nowSeconds = Math.floor(Date.now() / 1000); }
+  }
+
+  async function refreshStatus() {
+    refreshingStatus = true;
+    try { snapshot = await onRefreshStatus(); }
+    finally { refreshingStatus = false; nowSeconds = Math.floor(Date.now() / 1000); }
+  }
+
+  function freshnessText(): string {
+    if (refreshingStatus) return "Observed status · Refreshing";
+    if (snapshot.observedStatusAt === null) return "Observed status · Not updated yet";
+    const age = Math.max(0, nowSeconds - snapshot.observedStatusAt);
+    const relative = age < 60 ? `${age}s ago` : `${Math.floor(age / 60)}m ago`;
+    return `Observed status · ${age > 45 ? "Delayed · " : ""}Updated ${relative}`;
+  }
+
+  async function saveObservedClient(hardwareAddress: string) {
+    const label = (clientLabelDrafts[hardwareAddress] ?? "").trim();
+    if (!label) return;
+    await runMutation(`Saving ${label}`, () => onSaveClientLabel(hardwareAddress, label));
+    clientLabelDrafts[hardwareAddress] = "";
+  }
+
+  async function renameSavedClient(hardwareAddress: string, currentLabel: string) {
+    const label = (savedLabelDrafts[hardwareAddress] ?? currentLabel).trim();
+    if (!label) return;
+    await runMutation(`Renaming ${currentLabel}`, () => onRenameSavedClient(hardwareAddress, label));
   }
 
   async function runMutation(label: string, operation: () => Promise<ApplicationSnapshot | void>) {
@@ -132,6 +188,26 @@
     return role === "prism_pulse" ? "wifi_hotspot" : "prism_pulse";
   }
 
+  function openSection(section: Section) {
+    activeSection = section;
+  }
+
+  function handleHotkey(event: KeyboardEvent) {
+    if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    const shortcuts: Record<string, Section> = {
+      "1": "overview",
+      "2": "network",
+      "3": "wifi",
+      "4": "diagnostics",
+      a: "about",
+    };
+    const section = shortcuts[event.key.toLowerCase()];
+    if (section) {
+      event.preventDefault();
+      openSection(section);
+    }
+  }
+
   async function requestManagedSharing() {
     if (snapshot.hostSharing?.profileKind === "external" && snapshot.hostSharing.active) {
       confirmManagedReplacement = true;
@@ -141,28 +217,41 @@
   }
 </script>
 
+<svelte:window on:keydown={handleHotkey} />
+
 <svelte:head>
   <title>Puppis S1 Manager for Linux</title>
 </svelte:head>
 
-<div class="shell">
+<div class="shell" style={`font-size: ${textScale}%`}>
   <header>
     <div>
-      <p class="eyebrow">Unofficial Linux utility</p>
+      <p class="eyebrow">{uiText.unofficial}</p>
       <h1>Puppis S1 Manager</h1>
     </div>
-    <span class="revision" aria-label={`State revision ${snapshot.revision}`}>Live state · {snapshot.revision}</span>
+    <div class="header-tools">
+      <span class="revision" aria-live="polite">{freshnessText()}</span>
+      <label class="text-scale">Text size
+        <select aria-label="Text size" bind:value={textScale}>
+          <option value={100}>100%</option>
+          <option value={125}>125%</option>
+          <option value={150}>150%</option>
+        </select>
+      </label>
+      <button class="about-link" type="button" aria-keyshortcuts="Alt+A" aria-current={activeSection === "about" ? "page" : undefined} on:click={() => openSection("about")}>About</button>
+    </div>
   </header>
 
   {#if failure}<div class="failure-banner" role="alert"><div><strong>{failure.message}</strong><p>{failure.guidance}</p></div><button type="button" aria-label="Dismiss operation failure" on:click={() => failure = null}>×</button></div>{/if}
   {#if operationPending}<div class="operation-status" role="status" aria-live="polite">{pendingLabel}. Verification and recovery will finish before other changes are allowed.</div>{/if}
 
   <nav aria-label="Application sections">
-    <button type="button" aria-current={activeSection === "overview" ? "page" : undefined} on:click={() => activeSection = "overview"}>Overview</button>
-    <button type="button" aria-current={activeSection === "network" ? "page" : undefined} on:click={() => activeSection = "network"}>Network</button>
-    <button type="button" aria-current={activeSection === "wifi" ? "page" : undefined} on:click={() => activeSection = "wifi"}>Wi-Fi</button>
-    <button type="button" aria-current={activeSection === "diagnostics" ? "page" : undefined} on:click={() => activeSection = "diagnostics"}>Diagnostics</button>
+    <button type="button" aria-keyshortcuts="Alt+1" aria-current={activeSection === "overview" ? "page" : undefined} on:click={() => openSection("overview")}>Overview</button>
+    <button type="button" aria-keyshortcuts="Alt+2" aria-current={activeSection === "network" ? "page" : undefined} on:click={() => openSection("network")}>Network</button>
+    <button type="button" aria-keyshortcuts="Alt+3" aria-current={activeSection === "wifi" ? "page" : undefined} on:click={() => openSection("wifi")}>Wi-Fi</button>
+    <button type="button" aria-keyshortcuts="Alt+4" aria-current={activeSection === "diagnostics" ? "page" : undefined} on:click={() => openSection("diagnostics")}>Diagnostics</button>
   </nav>
+  <p class="sr-only" aria-live="polite">Current section: {activeSection === "wifi" ? "Wi-Fi" : activeSection[0].toUpperCase() + activeSection.slice(1)}</p>
 
   {#if activeSection === "overview"}
   <main id="overview">
@@ -174,6 +263,18 @@
       <p>The manager observes first. Nothing changes until you request it.</p>
     </div>
 
+    {#if !snapshot.verifiedPuppis}
+      <section class="first-launch" aria-labelledby="first-launch-heading">
+        <div><p class="eyebrow">Read first</p><h3 id="first-launch-heading">{uiText.firstLaunchHeading}</h3><p>{uiText.firstLaunchIntro}</p></div>
+        <ol>
+          <li class:complete={snapshot.candidates.length > 0}><strong>Connect and select a Puppis candidate.</strong><span>{snapshot.candidates.length === 0 ? "Connect the original P1411 over USB." : snapshot.selectedCandidateId ? "Candidate selected; protocol identity is still unverified." : "Choose the adapter connected to your Puppis."}</span></li>
+          <li class:complete={snapshot.verifiedPuppis !== null}><strong>Verify P1411 identity.</strong><span>Verification is read-only and must succeed before device changes are offered.</span></li>
+          <li><strong>Review host sharing.</strong><span>Network authorization is requested only after the Network page explains the managed sharing profile.</span><button class="secondary" type="button" on:click={() => openSection("network")}>Review network explanation</button></li>
+          <li><strong>Keep diagnostics available.</strong><span>A private preview remains available without enabling mutations.</span><button class="secondary" type="button" on:click={() => openSection("diagnostics")}>Open Diagnostics</button></li>
+        </ol>
+      </section>
+    {/if}
+
     <section class="status-grid" aria-label="Operational status">
       {#each dimensions as dimension}
         {@const status = statusFor(dimension.key)}
@@ -181,6 +282,7 @@
           <div class="status-title">
             <span class={`dot ${status.level}`} aria-hidden="true"></span>
             <h3>{dimension.label}</h3>
+            <span class="status-level">{status.level}</span>
           </div>
           <p>{status.summary}</p>
           {#if status.guidance}<small>{status.guidance}</small>{/if}
@@ -188,18 +290,62 @@
       {/each}
     </section>
 
-    {#if snapshot.clientEvidence.length > 0}
-      <section class="client-panel" aria-labelledby="client-evidence-heading">
-        <div class="client-panel-heading"><div><p class="eyebrow">Generic client devices</p><h3 id="client-evidence-heading">Client evidence</h3></div><button class="secondary" type="button" on:click={() => updateFrom(() => onRefreshClientEvidence(true))}>Refresh client telemetry</button></div>
+    <section class="client-panel" aria-labelledby="client-evidence-heading">
+        <div class="client-panel-heading"><div><p class="eyebrow">Passive local evidence</p><h3 id="client-evidence-heading">Observed clients</h3></div><button class="secondary" type="button" disabled={refreshingStatus} on:click={refreshClients}>Refresh observed clients</button></div>
+        <p>A client appears after it sends local network traffic. This passive view does not probe, ping, wake, or prove Wi-Fi association.</p>
+        {#if snapshot.clientEvidence.length > 0}
         <div class="client-list">
           {#each snapshot.clientEvidence as client}
-            <div><strong>{client.alias}</strong><span>{client.kind === "connected" ? "Connected client" : "Recently observed client"}</span>{#if client.kind === "recently_observed"}<small>Host network evidence; current Wi-Fi connection is not confirmed.</small>{:else}<small>Currently reported active by a validated Puppis capability.</small>{/if}</div>
+            {@const savedRecord = snapshot.savedClients.find((saved) => saved.hardwareAddress === client.hardwareAddress)}
+            <div class="client-row">
+              <strong>{client.displayName}</strong>
+              <span>{client.kind === "connected" ? "Connected client" : "Recently observed client"}</span>
+              <small>{client.hardwareAddress}</small>
+              <small>{client.addresses.length > 0 ? client.addresses.join(" · ") : "No current IP address observed"}</small>
+              {#if client.kind === "recently_observed"}<small>Host network evidence; current Wi-Fi connection is not confirmed.</small>{:else}<small>Currently reported active by a validated Puppis capability.</small>{/if}
+              {#if !client.saved && snapshot.savedClientsAvailable}
+                <form class="client-label-form" on:submit|preventDefault={() => saveObservedClient(client.hardwareAddress)}>
+                  <label>Label <input aria-label={`Label ${client.hardwareAddress}`} maxlength="40" bind:value={clientLabelDrafts[client.hardwareAddress]} /></label>
+                  <button class="secondary" type="submit" disabled={!clientLabelDrafts[client.hardwareAddress]?.trim()} aria-label={`Save ${clientLabelDrafts[client.hardwareAddress]?.trim() || "client label"}`}>Save label</button>
+                </form>
+                {#if snapshot.savedClients.length > 0}
+                  <div class="button-row">
+                    {#each snapshot.savedClients as saved}
+                      <button class="secondary" type="button" on:click={() => reassociation = { previousHardwareAddress: saved.hardwareAddress, newHardwareAddress: client.hardwareAddress }}>Use saved label “{saved.label}”</button>
+                    {/each}
+                  </div>
+                {/if}
+              {:else if savedRecord && snapshot.savedClientsAvailable}
+                <small>Last observed {new Date(savedRecord.lastObservedAt * 1000).toLocaleString()}</small>
+                <form class="client-label-form" on:submit|preventDefault={() => renameSavedClient(savedRecord.hardwareAddress, savedRecord.label)}>
+                  <label>Rename <input aria-label={`Rename ${savedRecord.label}`} maxlength="40" value={savedLabelDrafts[savedRecord.hardwareAddress] ?? savedRecord.label} on:input={(event) => savedLabelDrafts[savedRecord.hardwareAddress] = event.currentTarget.value} /></label>
+                  <button class="secondary" type="submit">Rename</button>
+                  <button class="danger" type="button" aria-label={`Forget ${savedRecord.label}`} on:click={() => runMutation(`Forgetting ${savedRecord.label}`, () => onForgetSavedClient(savedRecord.hardwareAddress))}>Forget</button>
+                </form>
+              {/if}
+            </div>
           {/each}
         </div>
+        {:else}<p>No clients are currently observed.</p>{/if}
       </section>
-    {/if}
 
-    {#if snapshot.candidates.length > 1 && !snapshot.selectedCandidateId}
+      {#if unobservedSavedClients.length > 0 || !snapshot.savedClientsAvailable}
+        <section class="client-panel" aria-labelledby="saved-clients-heading">
+          <div class="client-panel-heading"><div><p class="eyebrow">Recognition only</p><h3 id="saved-clients-heading">Saved clients</h3></div>{#if snapshot.savedClients.length > 0}<button class="danger" type="button" on:click={() => confirmClearSaved = true}>Clear all saved clients</button>{/if}</div>
+          {#if !snapshot.savedClientsAvailable}
+            <div class="recovery" role="alert"><p>{snapshot.savedClientsFailure?.message}</p><p>{snapshot.savedClientsFailure?.guidance}</p><button class="danger" type="button" on:click={() => confirmResetSaved = true}>Reset saved clients</button></div>
+          {/if}
+          <div class="client-list">
+            {#each unobservedSavedClients as saved}
+              <div class="client-row"><strong>{saved.label}</strong><span>Saved · not currently observed</span><small>{saved.hardwareAddress}</small><small>{saved.addresses.length > 0 ? saved.addresses.join(" · ") : "No last observed IP address"}</small><small>Last observed {new Date(saved.lastObservedAt * 1000).toLocaleString()}</small>
+                <form class="client-label-form" on:submit|preventDefault={() => renameSavedClient(saved.hardwareAddress, saved.label)}><label>Rename <input aria-label={`Rename ${saved.label}`} maxlength="40" value={savedLabelDrafts[saved.hardwareAddress] ?? saved.label} on:input={(event) => savedLabelDrafts[saved.hardwareAddress] = event.currentTarget.value} /></label><button class="secondary" type="submit">Rename</button><button class="danger" type="button" on:click={() => runMutation(`Forgetting ${saved.label}`, () => onForgetSavedClient(saved.hardwareAddress))}>Forget</button></form>
+              </div>
+            {/each}
+          </div>
+        </section>
+      {/if}
+
+    {#if snapshot.candidates.length > 0 && !snapshot.selectedCandidateId}
       <section class="candidate-panel" aria-labelledby="candidate-heading">
         <div>
           <p class="eyebrow">Selection required</p>
@@ -311,7 +457,7 @@
         </div>
       {/if}
     </main>
-  {:else}
+  {:else if activeSection === "diagnostics"}
     <main>
       <div class="section-heading">
         <div><p class="eyebrow">Private by construction</p><h2>Diagnostics</h2></div>
@@ -324,5 +470,26 @@
         <button class="primary" type="button" on:click={exportDiagnostics}>Export reviewed diagnostics</button>
       {/if}
     </main>
+  {:else}
+    <main>
+      <div class="section-heading"><div><p class="eyebrow">Project information</p><h2>About</h2></div><p>Version {packageMetadata.version}</p></div>
+      <section class="about-card" aria-label="Application attribution and licensing">
+        <h3>Puppis S1 Manager for Linux</h3>
+        <p>This is an unofficial application for the original PrismXR Puppis S1 (P1411). PrismXR does not endorse or support this project.</p>
+        <p>{uiText.attribution}</p>
+        <p>The original project is copyright © 2026 Keary Chang and is licensed under the MIT License. Vendor binaries, artwork, raw traces, and decompiled source are excluded from the project and package.</p>
+      </section>
+    </main>
   {/if}
+  {#if confirmClearSaved}
+    <div class="dialog-backdrop"><div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="clear-saved-title"><h3 id="clear-saved-title">Clear all saved clients?</h3><p>Every saved label, hardware address, last-observed time, and latest address set will be removed.</p><div class="button-row"><button class="secondary" type="button" on:click={() => confirmClearSaved = false}>Cancel</button><button class="danger" type="button" on:click={async () => { confirmClearSaved = false; await runMutation("Clearing saved clients", () => onClearSavedClients(true)); }}>Clear saved clients</button></div></div></div>
+  {/if}
+  {#if confirmResetSaved}
+    <div class="dialog-backdrop"><div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="reset-saved-title"><h3 id="reset-saved-title">Reset unreadable saved-client data?</h3><p>The existing file will be replaced with an empty, versioned saved-client file.</p><div class="button-row"><button class="secondary" type="button" on:click={() => confirmResetSaved = false}>Cancel</button><button class="danger" type="button" on:click={async () => { confirmResetSaved = false; await runMutation("Resetting saved clients", () => onResetSavedClients(true)); }}>Reset saved clients</button></div></div></div>
+  {/if}
+  {#if reassociation}
+    {@const previous = snapshot.savedClients.find((saved) => saved.hardwareAddress === reassociation?.previousHardwareAddress)}
+    <div class="dialog-backdrop"><div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="reassociate-title"><h3 id="reassociate-title">Move saved label to this hardware address?</h3><p>Label: {previous?.label}</p><p>Old MAC: {reassociation.previousHardwareAddress}<br />New MAC: {reassociation.newHardwareAddress}<br />Last observed: {previous ? new Date(previous.lastObservedAt * 1000).toLocaleString() : "Unknown"}</p><div class="button-row"><button class="secondary" type="button" on:click={() => reassociation = null}>Cancel</button><button class="primary" type="button" on:click={async () => { const request = reassociation!; reassociation = null; await runMutation("Reassociating saved client", () => onReassociateSavedClient(request.previousHardwareAddress, request.newHardwareAddress, true)); }}>Confirm reassociation</button></div></div></div>
+  {/if}
+  <footer><p>{uiText.shortcuts}</p></footer>
 </div>

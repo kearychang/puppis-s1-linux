@@ -29,6 +29,7 @@ fn environment(effects: Vec<RadioWriteEffect>) -> InMemoryEnvironment {
 fn ready_app(environment: InMemoryEnvironment) -> Application {
     let app = Application::new(environment);
     app.refresh_candidates().unwrap();
+    app.select_candidate("candidate-1").unwrap();
     app.verify_selected_puppis().unwrap();
     app.read_radio_settings().unwrap();
     app

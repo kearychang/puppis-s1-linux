@@ -1,6 +1,6 @@
 use puppis_core::{
-    Application, DeviceIdentity, InMemoryEnvironment, OperationFailure, PuppisCandidate,
-    QUALIFIED_FIRMWARE, UsbLinkSpeed,
+    Application, ClientNetworkObservation, DeviceIdentity, InMemoryEnvironment, OperationFailure,
+    PuppisCandidate, QUALIFIED_FIRMWARE, UsbLinkSpeed,
 };
 
 fn verified_application() -> Application {
@@ -17,8 +17,36 @@ fn verified_application() -> Application {
     });
     let app = Application::new(environment);
     app.refresh_candidates().unwrap();
+    app.select_candidate("usb:enx020000000101:1790").unwrap();
     app.verify_selected_puppis().unwrap();
     app
+}
+
+#[test]
+fn diagnostics_redact_saved_labels_and_hardware_addresses() {
+    let environment = InMemoryEnvironment::with_candidates(vec![PuppisCandidate {
+        id: "candidate-1".into(),
+        interface_name: "enx001".into(),
+        display_name: "USB network adapter (enx001)".into(),
+        link_speed: UsbLinkSpeed::SuperSpeed,
+    }])
+    .with_recent_client_observations(vec![ClientNetworkObservation::fixture(
+        "02:00:00:00:02:01",
+        "192.168.137.20",
+    )]);
+    let app = Application::new(environment);
+    app.refresh_candidates().unwrap();
+    app.select_candidate("candidate-1").unwrap();
+    app.refresh_client_evidence(true).unwrap();
+    app.save_client_label("02:00:00:00:02:01", "Living Room Headset")
+        .unwrap();
+
+    let preview = app.preview_diagnostics().unwrap().preview;
+
+    assert!(!preview.contains("Living Room Headset"));
+    assert!(!preview.contains("02:00:00:00:02:01"));
+    assert!(preview.contains("client-1"));
+    assert!(preview.contains("192.168.137.20"));
 }
 
 #[test]

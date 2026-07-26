@@ -4,9 +4,11 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 
+pub mod client_state;
 pub mod diagnostics;
 pub mod log;
 pub mod network;
@@ -109,11 +111,39 @@ pub enum ClientEvidenceKind {
     RecentlyObserved,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ClientNetworkObservation {
+    pub hardware_address: String,
+    pub address: Option<String>,
+}
+
+impl ClientNetworkObservation {
+    pub fn fixture(hardware_address: &str, address: &str) -> Self {
+        Self {
+            hardware_address: hardware_address.to_ascii_lowercase(),
+            address: Some(address.into()),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientEvidence {
     pub alias: String,
+    pub display_name: String,
+    pub hardware_address: String,
+    pub addresses: Vec<String>,
     pub kind: ClientEvidenceKind,
+    pub saved: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedClient {
+    pub label: String,
+    pub hardware_address: String,
+    pub last_observed_at: u64,
+    pub addresses: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -236,6 +266,7 @@ pub enum RadioWriteEffect {
 #[serde(rename_all = "camelCase")]
 pub struct ApplicationSnapshot {
     pub revision: u64,
+    pub observed_status_at: Option<u64>,
     pub candidates: Vec<PuppisCandidate>,
     pub selected_candidate_id: Option<String>,
     pub verified_puppis: Option<DeviceIdentity>,
@@ -245,6 +276,9 @@ pub struct ApplicationSnapshot {
     pub recovery_required: bool,
     pub device_role: Option<DeviceRole>,
     pub client_evidence: Vec<ClientEvidence>,
+    pub saved_clients: Vec<SavedClient>,
+    pub saved_clients_available: bool,
+    pub saved_clients_failure: Option<OperationFailure>,
     pub usb: StatusDimension,
     pub sharing: StatusDimension,
     pub protocol: StatusDimension,
@@ -258,6 +292,7 @@ impl Default for ApplicationSnapshot {
     fn default() -> Self {
         Self {
             revision: 1,
+            observed_status_at: None,
             candidates: Vec::new(),
             selected_candidate_id: None,
             verified_puppis: None,
@@ -267,6 +302,9 @@ impl Default for ApplicationSnapshot {
             recovery_required: false,
             device_role: None,
             client_evidence: Vec::new(),
+            saved_clients: Vec::new(),
+            saved_clients_available: true,
+            saved_clients_failure: None,
             usb: StatusDimension::unavailable("No Puppis candidate detected"),
             sharing: StatusDimension::unavailable("Host sharing not inspected"),
             protocol: StatusDimension::unavailable("No verified Puppis"),
@@ -313,11 +351,15 @@ pub struct InMemoryEnvironment {
     role: Arc<RwLock<Option<DeviceRole>>>,
     role_write_effects: Arc<Mutex<VecDeque<RoleWriteEffect>>>,
     connected_clients: Arc<RwLock<Vec<String>>>,
-    recent_clients: Arc<RwLock<Vec<String>>>,
+    recent_clients: Arc<RwLock<Vec<ClientNetworkObservation>>>,
     telemetry_read_count: Arc<AtomicUsize>,
     configuration_read_count: Arc<AtomicUsize>,
     identity_failures_remaining: Arc<AtomicUsize>,
     bootstrap_active: Arc<RwLock<bool>>,
+    current_time: Arc<AtomicU64>,
+    saved_clients: Arc<RwLock<Vec<SavedClient>>>,
+    saved_clients_path: Option<PathBuf>,
+    saved_clients_failure: Arc<RwLock<Option<OperationFailure>>>,
 }
 
 impl InMemoryEnvironment {
@@ -341,10 +383,29 @@ impl InMemoryEnvironment {
             configuration_read_count: Arc::new(AtomicUsize::new(0)),
             identity_failures_remaining: Arc::new(AtomicUsize::new(0)),
             bootstrap_active: Arc::new(RwLock::new(false)),
+            current_time: Arc::new(AtomicU64::new(0)),
+            saved_clients: Arc::new(RwLock::new(Vec::new())),
+            saved_clients_path: None,
+            saved_clients_failure: Arc::new(RwLock::new(None)),
         }
     }
 
     pub fn linux_system() -> Self {
+        let saved_clients_path = client_state::system_path();
+        let (saved_clients, saved_clients_failure) = match saved_clients_path.as_deref() {
+            Some(path) => match client_state::load(path) {
+                Ok(clients) => (clients, None),
+                Err(failure) => (Vec::new(), Some(failure)),
+            },
+            None => (
+                Vec::new(),
+                Some(OperationFailure::safe(
+                    "saved_clients_storage_failed",
+                    "Saved client recognition data is unavailable.",
+                    "Set HOME or XDG_STATE_HOME to a writable user state directory.",
+                )),
+            ),
+        };
         Self {
             candidates: Arc::new(RwLock::new(Vec::new())),
             discover_system_usb: true,
@@ -364,6 +425,10 @@ impl InMemoryEnvironment {
             configuration_read_count: Arc::new(AtomicUsize::new(0)),
             identity_failures_remaining: Arc::new(AtomicUsize::new(0)),
             bootstrap_active: Arc::new(RwLock::new(false)),
+            current_time: Arc::new(AtomicU64::new(0)),
+            saved_clients: Arc::new(RwLock::new(saved_clients)),
+            saved_clients_path,
+            saved_clients_failure: Arc::new(RwLock::new(saved_clients_failure)),
         }
     }
 
@@ -400,8 +465,71 @@ impl InMemoryEnvironment {
         *self
             .recent_clients
             .write()
+            .expect("recent client state poisoned") = recent
+            .into_iter()
+            .map(|hardware_address| ClientNetworkObservation {
+                hardware_address,
+                address: None,
+            })
+            .collect();
+        self
+    }
+
+    pub fn with_recent_client_observations(self, recent: Vec<ClientNetworkObservation>) -> Self {
+        *self
+            .recent_clients
+            .write()
             .expect("recent client state poisoned") = recent;
         self
+    }
+
+    pub fn with_current_time(self, epoch_seconds: u64) -> Self {
+        self.current_time.store(epoch_seconds, Ordering::Relaxed);
+        self
+    }
+
+    pub fn with_saved_clients_path(mut self, path: PathBuf) -> Self {
+        let (clients, failure) = match client_state::load(&path) {
+            Ok(clients) => (clients, None),
+            Err(failure) => (Vec::new(), Some(failure)),
+        };
+        *self
+            .saved_clients
+            .write()
+            .expect("saved client state poisoned") = clients;
+        *self
+            .saved_clients_failure
+            .write()
+            .expect("saved client failure state poisoned") = failure;
+        self.saved_clients_path = Some(path);
+        self
+    }
+
+    fn current_time(&self) -> u64 {
+        let fixed = self.current_time.load(Ordering::Relaxed);
+        if fixed > 0 {
+            fixed
+        } else {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs()
+        }
+    }
+
+    fn persist_saved_clients(&self, clients: &[SavedClient]) -> Result<(), OperationFailure> {
+        if let Some(failure) = self
+            .saved_clients_failure
+            .read()
+            .expect("saved client failure state poisoned")
+            .clone()
+        {
+            return Err(failure);
+        }
+        if let Some(path) = &self.saved_clients_path {
+            client_state::save(path, clients)?;
+        }
+        Ok(())
     }
 
     pub fn telemetry_reads(&self) -> usize {
@@ -809,22 +937,30 @@ impl InMemoryEnvironment {
     fn read_client_evidence(
         &self,
         interface_name: &str,
-    ) -> Result<(Vec<String>, Vec<String>), OperationFailure> {
+    ) -> Result<(Vec<ClientNetworkObservation>, Vec<ClientNetworkObservation>), OperationFailure>
+    {
         self.telemetry_read_count.fetch_add(1, Ordering::Relaxed);
         if self.use_system_protocol {
             // No validated P1411 station getter is currently qualified, so host evidence must never be promoted to connected.
             return Ok((Vec::new(), network::recent_clients(interface_name)));
         }
-        Ok((
-            self.connected_clients
-                .read()
-                .expect("connected client state poisoned")
-                .clone(),
-            self.recent_clients
-                .read()
-                .expect("recent client state poisoned")
-                .clone(),
-        ))
+        let connected = self
+            .connected_clients
+            .read()
+            .expect("connected client state poisoned")
+            .iter()
+            .cloned()
+            .map(|hardware_address| ClientNetworkObservation {
+                hardware_address,
+                address: None,
+            })
+            .collect();
+        let recent = self
+            .recent_clients
+            .read()
+            .expect("recent client state poisoned")
+            .clone();
+        Ok((connected, recent))
     }
 }
 
@@ -862,6 +998,17 @@ impl Drop for ActiveOperationGuard {
 impl Application {
     pub fn new(environment: InMemoryEnvironment) -> Self {
         let mut initial = ApplicationSnapshot::default();
+        initial.saved_clients = environment
+            .saved_clients
+            .read()
+            .expect("saved client state poisoned")
+            .clone();
+        initial.saved_clients_failure = environment
+            .saved_clients_failure
+            .read()
+            .expect("saved client failure state poisoned")
+            .clone();
+        initial.saved_clients_available = initial.saved_clients_failure.is_none();
         if environment.interrupted_marker() {
             initial.recovery_required = true;
             initial.configuration = StatusDimension {
@@ -920,7 +1067,9 @@ impl Application {
             .selected_candidate_id
             .is_none()
         {
-            return Ok(self.snapshot());
+            let mut snapshot = self.snapshot.write().expect("application state poisoned");
+            snapshot.observed_status_at = Some(self.environment.current_time());
+            return Ok(snapshot.clone());
         }
         if let Err(failure) = self.inspect_host_sharing() {
             self.remember_failure(&failure);
@@ -928,6 +1077,10 @@ impl Application {
         if let Err(failure) = self.verify_selected_puppis() {
             self.remember_failure(&failure);
         }
+        self.snapshot
+            .write()
+            .expect("application state poisoned")
+            .observed_status_at = Some(self.environment.current_time());
         Ok(self.snapshot())
     }
 
@@ -963,9 +1116,6 @@ impl Application {
             snapshot.selected_candidate_id = None;
             snapshot.usb = StatusDimension::unavailable("No Puppis candidate detected");
             snapshot.protocol = StatusDimension::unavailable("No verified Puppis");
-        } else if snapshot.candidates.len() == 1 && snapshot.selected_candidate_id.is_none() {
-            snapshot.selected_candidate_id = Some(snapshot.candidates[0].id.clone());
-            apply_selected_candidate_status(&mut snapshot);
         } else if snapshot.selected_candidate_id.is_none() {
             snapshot.usb = StatusDimension {
                 level: StatusLevel::Attention,
@@ -1574,30 +1724,116 @@ impl Application {
         }
         let interface_name = self.selected_interface()?;
         let (connected, recent) = self.environment.read_client_evidence(&interface_name)?;
-        let connected_set: HashSet<_> = connected.iter().cloned().collect();
-        let mut evidence = Vec::new();
-        for _identifier in connected {
-            evidence.push(ClientEvidence {
-                alias: format!("client-{}", evidence.len() + 1),
-                kind: ClientEvidenceKind::Connected,
-            });
-        }
-        for identifier in recent {
-            if !connected_set.contains(&identifier) {
-                evidence.push(ClientEvidence {
-                    alias: format!("client-{}", evidence.len() + 1),
-                    kind: ClientEvidenceKind::RecentlyObserved,
-                });
+        let puppis_hardware_addresses: HashSet<_> = connected
+            .iter()
+            .chain(&recent)
+            .filter(|observation| observation.address.as_deref() == Some("192.168.137.254"))
+            .map(|observation| observation.hardware_address.to_ascii_lowercase())
+            .collect();
+        let retain_client = |observation: &ClientNetworkObservation| {
+            let hardware_address = observation.hardware_address.to_ascii_lowercase();
+            !puppis_hardware_addresses.contains(&hardware_address)
+                && !matches!(
+                    observation.address.as_deref(),
+                    Some("192.168.137.0" | "192.168.137.1" | "192.168.137.255")
+                )
+        };
+        let connected: Vec<_> = connected.into_iter().filter(&retain_client).collect();
+        let recent: Vec<_> = recent.into_iter().filter(retain_client).collect();
+        let connected_set: HashSet<_> = connected
+            .iter()
+            .map(|observation| observation.hardware_address.to_ascii_lowercase())
+            .collect();
+        let mut grouped =
+            std::collections::BTreeMap::<String, (Vec<String>, ClientEvidenceKind)>::new();
+        for observation in connected.into_iter().chain(recent) {
+            let hardware_address = observation.hardware_address.to_ascii_lowercase();
+            let kind = if connected_set.contains(&hardware_address) {
+                ClientEvidenceKind::Connected
+            } else {
+                ClientEvidenceKind::RecentlyObserved
+            };
+            let entry = grouped
+                .entry(hardware_address)
+                .or_insert_with(|| (Vec::new(), kind));
+            if let Some(address) = observation.address
+                && !entry.0.contains(&address)
+            {
+                entry.0.push(address);
+                entry.0.sort();
             }
         }
+        let mut evidence: Vec<_> = grouped
+            .into_iter()
+            .enumerate()
+            .map(|(index, (hardware_address, (addresses, kind)))| {
+                let saved = self
+                    .environment
+                    .saved_clients
+                    .read()
+                    .expect("saved client state poisoned")
+                    .iter()
+                    .find(|client| client.hardware_address == hardware_address)
+                    .cloned();
+                ClientEvidence {
+                    alias: format!("client-{}", index + 1),
+                    display_name: saved
+                        .as_ref()
+                        .map(|client| client.label.clone())
+                        .unwrap_or_else(|| "Unlabeled client".into()),
+                    hardware_address,
+                    addresses,
+                    kind,
+                    saved: saved.is_some(),
+                }
+            })
+            .collect();
+        sort_client_evidence(&mut evidence);
         let connected_count = evidence
             .iter()
             .filter(|item| item.kind == ClientEvidenceKind::Connected)
             .count();
         let recent_count = evidence.len() - connected_count;
+        let now = self.environment.current_time();
         let mut snapshot = self.snapshot.write().expect("application state poisoned");
         snapshot.revision += 1;
+        snapshot.observed_status_at = Some(now);
         snapshot.client_evidence = evidence;
+        {
+            let mut saved_clients_guard = self
+                .environment
+                .saved_clients
+                .write()
+                .expect("saved client state poisoned");
+            let mut saved_clients = saved_clients_guard.clone();
+            let mut changed = false;
+            for saved in saved_clients.iter_mut() {
+                if let Some(observed) = snapshot
+                    .client_evidence
+                    .iter()
+                    .find(|item| item.hardware_address == saved.hardware_address)
+                    && (saved.last_observed_at != now || saved.addresses != observed.addresses)
+                {
+                    saved.last_observed_at = now;
+                    saved.addresses.clone_from(&observed.addresses);
+                    changed = true;
+                }
+            }
+            if changed {
+                if let Err(failure) = self.environment.persist_saved_clients(&saved_clients) {
+                    *self
+                        .environment
+                        .saved_clients_failure
+                        .write()
+                        .expect("saved client failure state poisoned") = Some(failure.clone());
+                    snapshot.saved_clients_available = false;
+                    snapshot.saved_clients_failure = Some(failure);
+                } else {
+                    saved_clients_guard.clone_from(&saved_clients);
+                }
+            }
+            snapshot.saved_clients.clone_from(&saved_clients_guard);
+        }
         snapshot.clients = if connected_count > 0 {
             StatusDimension {
                 level: StatusLevel::Healthy,
@@ -1630,6 +1866,337 @@ impl Application {
                 guidance: None,
             }
         };
+        Ok(snapshot.clone())
+    }
+
+    pub fn save_client_label(
+        &self,
+        hardware_address: &str,
+        label: &str,
+    ) -> Result<ApplicationSnapshot, OperationFailure> {
+        let label = label.trim();
+        if label.is_empty() || label.chars().count() > 40 || label.chars().any(char::is_control) {
+            return Err(OperationFailure::safe(
+                "invalid_client_label",
+                "Client labels must contain 1 to 40 printable characters.",
+                "Choose a shorter label without control characters.",
+            ));
+        }
+        let hardware_address = hardware_address.to_ascii_lowercase();
+        let observed = self
+            .snapshot
+            .read()
+            .expect("application state poisoned")
+            .client_evidence
+            .iter()
+            .find(|client| client.hardware_address == hardware_address)
+            .cloned()
+            .ok_or_else(|| {
+                OperationFailure::safe(
+                    "observed_client_required",
+                    "Only a currently observed client can be saved.",
+                    "Wait for local traffic from the client, refresh, and try again.",
+                )
+            })?;
+        let mut saved_clients_guard = self
+            .environment
+            .saved_clients
+            .write()
+            .expect("saved client state poisoned");
+        let mut saved_clients = saved_clients_guard.clone();
+        if saved_clients.iter().any(|client| {
+            client.hardware_address != hardware_address
+                && client.label.to_lowercase() == label.to_lowercase()
+        }) {
+            return Err(OperationFailure::safe(
+                "client_label_not_unique",
+                "That client label is already in use.",
+                "Choose a unique label or rename the existing saved client.",
+            ));
+        }
+        if saved_clients.len() >= 10
+            && !saved_clients
+                .iter()
+                .any(|client| client.hardware_address == hardware_address)
+        {
+            return Err(OperationFailure::safe(
+                "saved_client_limit_reached",
+                "Up to 10 clients can be saved.",
+                "Forget a saved client before adding another.",
+            ));
+        }
+        let saved = SavedClient {
+            label: label.into(),
+            hardware_address: hardware_address.clone(),
+            last_observed_at: self.environment.current_time(),
+            addresses: observed.addresses,
+        };
+        if let Some(existing) = saved_clients
+            .iter_mut()
+            .find(|client| client.hardware_address == hardware_address)
+        {
+            *existing = saved;
+        } else {
+            saved_clients.push(saved);
+        }
+        saved_clients.sort_by_key(|client| client.label.to_lowercase());
+        self.environment.persist_saved_clients(&saved_clients)?;
+        saved_clients_guard.clone_from(&saved_clients);
+        drop(saved_clients_guard);
+        let mut snapshot = self.snapshot.write().expect("application state poisoned");
+        snapshot.revision += 1;
+        snapshot.saved_clients = saved_clients;
+        if let Some(client) = snapshot
+            .client_evidence
+            .iter_mut()
+            .find(|client| client.hardware_address == hardware_address)
+        {
+            client.display_name = label.into();
+            client.saved = true;
+        }
+        sort_client_evidence(&mut snapshot.client_evidence);
+        Ok(snapshot.clone())
+    }
+
+    pub fn rename_saved_client(
+        &self,
+        hardware_address: &str,
+        label: &str,
+    ) -> Result<ApplicationSnapshot, OperationFailure> {
+        let label = label.trim();
+        if label.is_empty() || label.chars().count() > 40 || label.chars().any(char::is_control) {
+            return Err(OperationFailure::safe(
+                "invalid_client_label",
+                "Client labels must contain 1 to 40 printable characters.",
+                "Choose a shorter label without control characters.",
+            ));
+        }
+        let hardware_address = hardware_address.to_ascii_lowercase();
+        let mut guard = self
+            .environment
+            .saved_clients
+            .write()
+            .expect("saved client state poisoned");
+        let mut saved_clients = guard.clone();
+        if saved_clients.iter().any(|client| {
+            client.hardware_address != hardware_address
+                && client.label.to_lowercase() == label.to_lowercase()
+        }) {
+            return Err(OperationFailure::safe(
+                "client_label_not_unique",
+                "That client label is already in use.",
+                "Choose a unique label or rename the existing saved client.",
+            ));
+        }
+        let Some(saved) = saved_clients
+            .iter_mut()
+            .find(|client| client.hardware_address == hardware_address)
+        else {
+            return Err(OperationFailure::safe(
+                "saved_client_not_found",
+                "That saved client no longer exists.",
+                "Refresh saved clients and try again.",
+            ));
+        };
+        saved.label = label.into();
+        saved_clients.sort_by_key(|client| client.label.to_lowercase());
+        self.environment.persist_saved_clients(&saved_clients)?;
+        guard.clone_from(&saved_clients);
+        drop(guard);
+        let mut snapshot = self.snapshot.write().expect("application state poisoned");
+        snapshot.revision += 1;
+        snapshot.saved_clients = saved_clients;
+        if let Some(client) = snapshot
+            .client_evidence
+            .iter_mut()
+            .find(|client| client.hardware_address == hardware_address)
+        {
+            client.display_name = label.into();
+        }
+        sort_client_evidence(&mut snapshot.client_evidence);
+        Ok(snapshot.clone())
+    }
+
+    pub fn reassociate_saved_client(
+        &self,
+        previous_hardware_address: &str,
+        new_hardware_address: &str,
+        confirmed: bool,
+    ) -> Result<ApplicationSnapshot, OperationFailure> {
+        if !confirmed {
+            return Err(OperationFailure::safe(
+                "confirmation_required",
+                "Confirm the saved-client reassociation.",
+                "Review the old and new hardware addresses before continuing.",
+            ));
+        }
+        let previous_hardware_address = previous_hardware_address.to_ascii_lowercase();
+        let new_hardware_address = new_hardware_address.to_ascii_lowercase();
+        let observed = self
+            .snapshot
+            .read()
+            .expect("application state poisoned")
+            .client_evidence
+            .iter()
+            .find(|client| client.hardware_address == new_hardware_address)
+            .cloned()
+            .ok_or_else(|| {
+                OperationFailure::safe(
+                    "observed_client_required",
+                    "The new hardware address is not currently observed.",
+                    "Wait for local traffic from that client, refresh, and try again.",
+                )
+            })?;
+        let mut guard = self
+            .environment
+            .saved_clients
+            .write()
+            .expect("saved client state poisoned");
+        let mut saved_clients = guard.clone();
+        if saved_clients
+            .iter()
+            .any(|client| client.hardware_address == new_hardware_address)
+        {
+            return Err(OperationFailure::safe(
+                "saved_client_already_exists",
+                "The new hardware address already belongs to a saved client.",
+                "Forget or rename the existing saved client first.",
+            ));
+        }
+        let saved = saved_clients
+            .iter_mut()
+            .find(|client| client.hardware_address == previous_hardware_address)
+            .ok_or_else(|| {
+                OperationFailure::safe(
+                    "saved_client_not_found",
+                    "That saved client no longer exists.",
+                    "Refresh saved clients and try again.",
+                )
+            })?;
+        saved.hardware_address = new_hardware_address.clone();
+        saved.last_observed_at = self.environment.current_time();
+        saved.addresses = observed.addresses;
+        let label = saved.label.clone();
+        self.environment.persist_saved_clients(&saved_clients)?;
+        guard.clone_from(&saved_clients);
+        drop(guard);
+        let mut snapshot = self.snapshot.write().expect("application state poisoned");
+        snapshot.revision += 1;
+        snapshot.saved_clients = saved_clients;
+        for client in &mut snapshot.client_evidence {
+            if client.hardware_address == previous_hardware_address {
+                client.display_name = "Unlabeled client".into();
+                client.saved = false;
+            } else if client.hardware_address == new_hardware_address {
+                client.display_name.clone_from(&label);
+                client.saved = true;
+            }
+        }
+        sort_client_evidence(&mut snapshot.client_evidence);
+        Ok(snapshot.clone())
+    }
+
+    pub fn forget_saved_client(
+        &self,
+        hardware_address: &str,
+    ) -> Result<ApplicationSnapshot, OperationFailure> {
+        let hardware_address = hardware_address.to_ascii_lowercase();
+        let mut guard = self
+            .environment
+            .saved_clients
+            .write()
+            .expect("saved client state poisoned");
+        let mut saved_clients = guard.clone();
+        saved_clients.retain(|client| client.hardware_address != hardware_address);
+        self.environment.persist_saved_clients(&saved_clients)?;
+        guard.clone_from(&saved_clients);
+        drop(guard);
+        let mut snapshot = self.snapshot.write().expect("application state poisoned");
+        snapshot.revision += 1;
+        snapshot.saved_clients = saved_clients;
+        if let Some(client) = snapshot
+            .client_evidence
+            .iter_mut()
+            .find(|client| client.hardware_address == hardware_address)
+        {
+            client.display_name = "Unlabeled client".into();
+            client.saved = false;
+        }
+        sort_client_evidence(&mut snapshot.client_evidence);
+        Ok(snapshot.clone())
+    }
+
+    pub fn clear_saved_clients(
+        &self,
+        confirmed: bool,
+    ) -> Result<ApplicationSnapshot, OperationFailure> {
+        if !confirmed {
+            return Err(OperationFailure::safe(
+                "confirmation_required",
+                "Confirm removal of all saved clients.",
+                "This removes every saved label and recognition record.",
+            ));
+        }
+        self.environment.persist_saved_clients(&[])?;
+        self.environment
+            .saved_clients
+            .write()
+            .expect("saved client state poisoned")
+            .clear();
+        let mut snapshot = self.snapshot.write().expect("application state poisoned");
+        snapshot.revision += 1;
+        snapshot.saved_clients.clear();
+        for client in &mut snapshot.client_evidence {
+            client.display_name = "Unlabeled client".into();
+            client.saved = false;
+        }
+        sort_client_evidence(&mut snapshot.client_evidence);
+        Ok(snapshot.clone())
+    }
+
+    pub fn reset_saved_clients(
+        &self,
+        confirmed: bool,
+    ) -> Result<ApplicationSnapshot, OperationFailure> {
+        if !confirmed {
+            return Err(OperationFailure::safe(
+                "confirmation_required",
+                "Confirm reset of saved client recognition data.",
+                "The unreadable or unsupported saved-client file will be replaced.",
+            ));
+        }
+        let path = self
+            .environment
+            .saved_clients_path
+            .as_ref()
+            .ok_or_else(|| {
+                OperationFailure::safe(
+                    "saved_clients_storage_failed",
+                    "Saved client recognition storage is unavailable.",
+                    "Set HOME or XDG_STATE_HOME to a writable user state directory.",
+                )
+            })?;
+        client_state::save(path, &[])?;
+        self.environment
+            .saved_clients
+            .write()
+            .expect("saved client state poisoned")
+            .clear();
+        *self
+            .environment
+            .saved_clients_failure
+            .write()
+            .expect("saved client failure state poisoned") = None;
+        let mut snapshot = self.snapshot.write().expect("application state poisoned");
+        snapshot.revision += 1;
+        snapshot.saved_clients.clear();
+        snapshot.saved_clients_available = true;
+        snapshot.saved_clients_failure = None;
+        for client in &mut snapshot.client_evidence {
+            client.display_name = "Unlabeled client".into();
+            client.saved = false;
+        }
+        sort_client_evidence(&mut snapshot.client_evidence);
         Ok(snapshot.clone())
     }
 
@@ -1917,6 +2484,19 @@ fn role_label(role: DeviceRole) -> &'static str {
         DeviceRole::WifiHotspot => "Wi-Fi hotspot mode",
         DeviceRole::WifiAdapter => "Wi-Fi adapter mode",
     }
+}
+
+fn sort_client_evidence(clients: &mut [ClientEvidence]) {
+    clients.sort_by(|left, right| match (left.saved, right.saved) {
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        (true, true) => left
+            .display_name
+            .to_lowercase()
+            .cmp(&right.display_name.to_lowercase())
+            .then_with(|| left.hardware_address.cmp(&right.hardware_address)),
+        (false, false) => left.hardware_address.cmp(&right.hardware_address),
+    });
 }
 
 fn role_unavailable() -> OperationFailure {

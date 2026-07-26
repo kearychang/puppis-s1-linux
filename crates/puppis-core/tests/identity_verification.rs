@@ -21,6 +21,7 @@ fn protocol_identity_promotes_a_candidate_to_a_verified_puppis() {
         role_code: "1".into(),
     }));
     app.refresh_candidates().unwrap();
+    app.select_candidate("candidate-1").unwrap();
 
     let snapshot = app.verify_selected_puppis().unwrap();
 
@@ -38,6 +39,7 @@ fn unknown_firmware_stays_usefully_read_only() {
         role_code: "1".into(),
     }));
     app.refresh_candidates().unwrap();
+    app.select_candidate("candidate-1").unwrap();
 
     let snapshot = app.verify_selected_puppis().unwrap();
 
@@ -60,6 +62,7 @@ fn a_non_p1411_response_never_verifies_the_candidate() {
         role_code: "1".into(),
     }));
     app.refresh_candidates().unwrap();
+    app.select_candidate("candidate-1").unwrap();
 
     let error = app.verify_selected_puppis().unwrap_err();
 

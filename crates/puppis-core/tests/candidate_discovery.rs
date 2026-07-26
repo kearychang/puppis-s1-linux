@@ -13,6 +13,22 @@ fn candidate(id: &str, interface: &str, speed: UsbLinkSpeed) -> PuppisCandidate 
 }
 
 #[test]
+fn one_candidate_still_requires_explicit_selection() {
+    let environment = InMemoryEnvironment::with_candidates(vec![candidate(
+        "usb-a",
+        "enx001",
+        UsbLinkSpeed::SuperSpeed,
+    )]);
+    let app = Application::new(environment);
+
+    let discovered = app.refresh_candidates().unwrap();
+
+    assert_eq!(discovered.candidates.len(), 1);
+    assert!(discovered.selected_candidate_id.is_none());
+    assert_eq!(discovered.usb.summary, "Select a Puppis candidate");
+}
+
+#[test]
 fn user_selects_one_ambiguous_candidate_without_claiming_it_is_a_puppis() {
     let environment = InMemoryEnvironment::with_candidates(vec![
         candidate("usb-a", "enx001", UsbLinkSpeed::SuperSpeed),

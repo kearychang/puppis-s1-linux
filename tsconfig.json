@@ -8,6 +8,7 @@
     "allowJs": false,
     "checkJs": false,
     "isolatedModules": true,
+    "resolveJsonModule": true,
     "verbatimModuleSyntax": true,
     "types": ["vitest/globals", "node"]
   },

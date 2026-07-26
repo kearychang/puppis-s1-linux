@@ -39,6 +39,7 @@ fn bootstrap_verifies_identity_then_promotes_only_the_owned_profile() {
     let environment = environment(ProfileKind::External, AuthorizationState::Prompt);
     let app = Application::new(environment.clone());
     app.refresh_candidates().unwrap();
+    app.select_candidate("candidate-1").unwrap();
     app.inspect_host_sharing().unwrap();
 
     let snapshot = app.enable_managed_sharing().unwrap();
@@ -66,6 +67,7 @@ fn authorization_denial_rolls_back_without_claiming_success() {
     let environment = environment(ProfileKind::None, AuthorizationState::Denied);
     let app = Application::new(environment.clone());
     app.refresh_candidates().unwrap();
+    app.select_candidate("candidate-1").unwrap();
     app.inspect_host_sharing().unwrap();
 
     let error = app.enable_managed_sharing().unwrap_err();
@@ -82,6 +84,7 @@ fn disable_and_remove_are_distinct_and_reject_external_profiles() {
     let environment = environment(ProfileKind::Managed, AuthorizationState::Allowed);
     let app = Application::new(environment.clone());
     app.refresh_candidates().unwrap();
+    app.select_candidate("candidate-1").unwrap();
     app.inspect_host_sharing().unwrap();
     app.disable_managed_sharing().unwrap();
     assert_eq!(
@@ -106,6 +109,7 @@ fn unreachable_identity_is_bootstrapped_only_inside_the_checkpoint() {
         environment(ProfileKind::None, AuthorizationState::Allowed).with_identity_failures(1);
     let app = Application::new(environment.clone());
     app.refresh_candidates().unwrap();
+    app.select_candidate("candidate-1").unwrap();
     app.inspect_host_sharing().unwrap();
 
     app.enable_managed_sharing().unwrap();

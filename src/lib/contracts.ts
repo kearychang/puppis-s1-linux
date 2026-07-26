@@ -8,6 +8,7 @@ export interface StatusDimension {
 
 export interface ApplicationSnapshot {
   revision: number;
+  observedStatusAt: number | null;
   candidates: PuppisCandidate[];
   selectedCandidateId: string | null;
   verifiedPuppis: DeviceIdentity | null;
@@ -17,6 +18,9 @@ export interface ApplicationSnapshot {
   recoveryRequired: boolean;
   deviceRole: DeviceRole | null;
   clientEvidence: ClientEvidence[];
+  savedClients: SavedClient[];
+  savedClientsAvailable: boolean;
+  savedClientsFailure: OperationFailure | null;
   usb: StatusDimension;
   sharing: StatusDimension;
   protocol: StatusDimension;
@@ -28,7 +32,18 @@ export interface ApplicationSnapshot {
 
 export interface ClientEvidence {
   alias: string;
+  displayName: string;
+  hardwareAddress: string;
+  addresses: string[];
   kind: "connected" | "recently_observed";
+  saved: boolean;
+}
+
+export interface SavedClient {
+  label: string;
+  hardwareAddress: string;
+  lastObservedAt: number;
+  addresses: string[];
 }
 
 export type DeviceRole = "prism_pulse" | "wifi_hotspot" | "wifi_adapter";

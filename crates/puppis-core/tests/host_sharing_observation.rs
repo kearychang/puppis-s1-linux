@@ -13,6 +13,7 @@ fn app_with_host(observation: HostSharingObservation) -> (Application, InMemoryE
     .with_host_sharing(observation);
     let app = Application::new(environment.clone());
     app.refresh_candidates().unwrap();
+    app.select_candidate("candidate-1").unwrap();
     (app, environment)
 }
 

@@ -25,6 +25,7 @@ fn app(firmware: &str) -> Application {
     );
     let app = Application::new(environment);
     app.refresh_candidates().unwrap();
+    app.select_candidate("candidate-1").unwrap();
     app.verify_selected_puppis().unwrap();
     app
 }

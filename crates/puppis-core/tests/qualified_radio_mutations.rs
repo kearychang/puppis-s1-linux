@@ -25,6 +25,7 @@ fn ready() -> (Application, InMemoryEnvironment) {
     );
     let app = Application::new(environment.clone());
     app.refresh_candidates().unwrap();
+    app.select_candidate("candidate-1").unwrap();
     app.verify_selected_puppis().unwrap();
     app.read_radio_settings().unwrap();
     (app, environment)
@@ -119,6 +120,7 @@ fn qualified_channels_are_bound_to_the_reported_country_for_both_radios() {
     );
     let app = Application::new(environment);
     app.refresh_candidates().unwrap();
+    app.select_candidate("candidate-1").unwrap();
     app.verify_selected_puppis().unwrap();
 
     let snapshot = app.read_radio_settings().unwrap();

@@ -1,4 +1,7 @@
-use crate::{AuthorizationState, HostSharingObservation, OperationFailure, ProfileKind};
+use crate::{
+    AuthorizationState, ClientNetworkObservation, HostSharingObservation, OperationFailure,
+    ProfileKind,
+};
 use dbus::arg::{PropMap, RefArg, Variant};
 use dbus::blocking::Connection;
 use dbus::blocking::stdintf::org_freedesktop_dbus::Properties;
@@ -166,7 +169,7 @@ fn has_subnet_conflict(selected_interface: &str) -> bool {
         })
 }
 
-pub fn recent_clients(interface_name: &str) -> Vec<String> {
+pub fn recent_clients(interface_name: &str) -> Vec<ClientNetworkObservation> {
     let mut clients: Vec<_> = std::fs::read_to_string("/proc/net/arp")
         .ok()
         .into_iter()
@@ -176,8 +179,12 @@ pub fn recent_clients(interface_name: &str) -> Vec<String> {
                 .skip(1)
                 .filter_map(|line| {
                     let fields: Vec<_> = line.split_whitespace().collect();
-                    (fields.len() >= 6 && fields[5] == interface_name && fields[2] == "0x2")
-                        .then(|| fields[3].to_ascii_lowercase())
+                    (fields.len() >= 6 && fields[5] == interface_name && fields[2] == "0x2").then(
+                        || ClientNetworkObservation {
+                            hardware_address: fields[3].to_ascii_lowercase(),
+                            address: Some(fields[0].into()),
+                        },
+                    )
                 })
                 .collect::<Vec<_>>()
         })

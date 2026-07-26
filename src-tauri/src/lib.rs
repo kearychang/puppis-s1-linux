@@ -121,6 +121,74 @@ fn refresh_client_evidence(
 }
 
 #[tauri::command]
+fn save_client_label(
+    hardware_address: String,
+    label: String,
+    application: tauri::State<'_, Application>,
+) -> Result<ApplicationSnapshot, puppis_core::OperationFailure> {
+    observed(
+        &application,
+        application.save_client_label(&hardware_address, &label),
+    )
+}
+
+#[tauri::command]
+fn rename_saved_client(
+    hardware_address: String,
+    label: String,
+    application: tauri::State<'_, Application>,
+) -> Result<ApplicationSnapshot, puppis_core::OperationFailure> {
+    observed(
+        &application,
+        application.rename_saved_client(&hardware_address, &label),
+    )
+}
+
+#[tauri::command]
+fn forget_saved_client(
+    hardware_address: String,
+    application: tauri::State<'_, Application>,
+) -> Result<ApplicationSnapshot, puppis_core::OperationFailure> {
+    observed(
+        &application,
+        application.forget_saved_client(&hardware_address),
+    )
+}
+
+#[tauri::command]
+fn clear_saved_clients(
+    confirmed: bool,
+    application: tauri::State<'_, Application>,
+) -> Result<ApplicationSnapshot, puppis_core::OperationFailure> {
+    observed(&application, application.clear_saved_clients(confirmed))
+}
+
+#[tauri::command]
+fn reset_saved_clients(
+    confirmed: bool,
+    application: tauri::State<'_, Application>,
+) -> Result<ApplicationSnapshot, puppis_core::OperationFailure> {
+    observed(&application, application.reset_saved_clients(confirmed))
+}
+
+#[tauri::command]
+fn reassociate_saved_client(
+    previous_hardware_address: String,
+    new_hardware_address: String,
+    confirmed: bool,
+    application: tauri::State<'_, Application>,
+) -> Result<ApplicationSnapshot, puppis_core::OperationFailure> {
+    observed(
+        &application,
+        application.reassociate_saved_client(
+            &previous_hardware_address,
+            &new_hardware_address,
+            confirmed,
+        ),
+    )
+}
+
+#[tauri::command]
 fn refresh_operational_status(
     application: tauri::State<'_, Application>,
 ) -> Result<ApplicationSnapshot, puppis_core::OperationFailure> {
@@ -165,6 +233,12 @@ pub fn run() {
             apply_radio_settings,
             set_device_role,
             refresh_client_evidence,
+            save_client_label,
+            rename_saved_client,
+            forget_saved_client,
+            clear_saved_clients,
+            reset_saved_clients,
+            reassociate_saved_client,
             refresh_operational_status,
             accept_current_configuration_as_baseline
         ])

@@ -18,6 +18,7 @@ fn ready(effects: Vec<RoleWriteEffect>) -> (Application, InMemoryEnvironment) {
     .with_role_write_effects(effects);
     let app = Application::new(environment.clone());
     app.refresh_candidates().unwrap();
+    app.select_candidate("candidate-1").unwrap();
     app.verify_selected_puppis().unwrap();
     (app, environment)
 }
