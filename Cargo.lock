@@ -2259,7 +2259,7 @@ dependencies = [
 
 [[package]]
 name = "puppis-core"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "dbus",
  "serde",
@@ -2270,7 +2270,7 @@ dependencies = [
 
 [[package]]
 name = "puppis-s1-manager"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "puppis-core",
  "tauri",
